@@ -1,5 +1,5 @@
 # Polyphenol_Quantification_FooDB# READ ME
-## Stephanie Wilson, January 2022
+Stephanie Wilson, January 2022
 
 ## Summary
 
