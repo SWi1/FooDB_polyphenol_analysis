@@ -50,11 +50,7 @@ Scripts in each set are intended to be run sequentially.
 3)  Polyphenol Quantification
     -   Q1_Polyphenol_Quantification_PhenolID.Rmd
     -   Q2_Polyphenol_Quantification_Content.Rmd
-    -   Q3_Polyphenol_Quantification_ASAmerge.Rmd
-
-4)  Polyphenol Properties
-    -   P1_Polyphenol_Properties_Taxonomy.Rmd    
-    -   P2_Polyphenol_Properties_Physiocheical.Rmd    
+    -   Q3_Polyphenol_Quantification_ASAmerge.Rmd  
   
 
 ## Outputs
@@ -82,7 +78,3 @@ Scripts in each set are intended to be run sequentially.
     -   Script 01, FooDB_phenols.csv (**KEY FILE**), Endogenous_phenols.csv (optional)
     -   Script 02, FooDB_phenols_Content.csv.bz2 (**KEY FILE**)
     -   Script 03, FooDB_phenol_content_ASAmerged.csv.bz2 (**KEY FILE**)
-
-4) Polyphenol Properties
-
-    -   Script 01, FooDB_phenols_taxonomy.csv
