@@ -1,0 +1,256 @@
+---
+title: "Q2_Polyphenol_Quantification_Content"
+author: "Stephanie Wilson"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+# Polyphenol Quantification
+## Step 2: Preparation of Phenol Content File
+
+__Required Input Files__  
+  - *FooDB_phenols.csv* - output from Q1_Polyphenol_Quantification_FooDB_PhenolID.Rmd
+  - *Food_V2_descripcleaned.csv* - output from 02_FooDB_TextProcessing.ipynb
+  - *Content.csv.* - FooDB data (version 1) downloaded Sept 2022 from FooDB.ca/downloads
+  - *Content_updated.csv* - output from 01_FooDB_FooDBCleaning.ipynb
+  - *Food_updated.csv* - 01_FooDB_FooDBCleaning.ipynb
+
+__Information__  
+This script prepares the Content file with cleaned text descriptions and merges this information with our phenol list. The output is ready to be matched with dietary recall data.
+
+  1) Replace Content_updated food descriptions with cleaned text descriptions
+  2) Add endogenous compounds back into Content_updated
+  3) Merge phenol compound data with Content_updated with cleaned food descriptions
+     - Important Note: Content file needs to be filtered for source_type=='Compounds'
+  4) Unit Check    
+  5) Polyphenol Totals and Updating the Content File
+
+
+__Outputs__  
+  - *FooDB_phenols_Content.csv.bz2* - Phenols pulled out of Compounds.csv and matched to FooDB's Compounds file with cleaned text descriptions.
+  - *FooDB_phenol_content_foodsums.csv* - Summed polyphenol intake per unique food id in FooDB. Specific foods not present in FooDB or present but not quantified have had their concentrations adjusted. 
+  
+```{r Load packages, message=FALSE}
+library(tidyverse)
+```
+
+
+```{r Load data}
+# Load FooDB phenols
+FooDB_phenols = read.csv('FooDB/FooDB_phenols.csv', header=TRUE)
+
+# Load cleaned text FooDB descriptions
+Food_V2 = read.csv("FooDB/Food_V2_descripcleaned.csv", header=TRUE) %>%
+  select(c(orig_food_common_name, food_V2_ID))
+
+# Load FooDB data
+Content_updated = read.csv('FooDB/Content_updated.csv.bz2', header=TRUE)
+Content = read.csv("FoodB/Content.csv.bz2", header=TRUE) %>% 
+  filter(!orig_food_common_name == 'Lipid from Arabidopsis (PathBank)') %>%
+  filter(!food_id == 16420)
+
+#Load updated FooDB Food ID's
+Food = read.csv('FooDB/Food_updated.csv') %>%
+  select(c(id, name, public_id)) %>%
+  rename('food_id' = 'id',
+         'food_name' = 'name',
+         'food_public_id' = 'public_id')
+```
+
+
+### 1) Replace food descriptions with cleaned text descriptions
+```{r}
+#match food_V2_ids, then replace old desription with new
+Content_updated[["new_descrip"]] = Food_V2[match(Content_updated[['food_V2_ID']], Food_V2[['food_V2_ID']]), 'orig_food_common_name']
+
+#delete old food descriptions, 
+#rename new_id to orig_food_common_name
+Content_updated = Content_updated %>% 
+  select(-c('orig_food_common_name')) %>%
+  rename(orig_food_common_name = new_descrip) %>%
+  relocate(c('orig_food_common_name', 'preparation_type', 
+             'food_V2_ID'), .after = orig_food_id)
+```
+
+
+### 2) Add endogenous compounds back into Contents_updated to recreate Content file
+We had previously removed Pathbank and endogenous compound (HMDB) entries from Content.csv in in 01_FooDB_FooDBCleaning.ipynb. Based on our exploration of phenol matches in Q1_Polyphenol_Quantification_FooDB_PhenolID.Rmd, we know that none of the 3080 polyphenolic compounds have entries related to Pathbank. However, several polyphenolic compounds had an endogenous description, so we need to add endogenous compounds back in. We will also give them a food id, 9914.
+
+```{r message=FALSE}
+#Identify the Endogenous Compounds
+Endogenous = anti_join(Content, Content_updated, by = 'id') %>% 
+  mutate(food_V2_ID = 9914)
+
+# Add endogenous back into Content_updated
+# We will keep out items from HMDB
+Content = full_join(Content_updated, Endogenous)
+```
+
+
+### 3) Merge phenol compound data with Content Data with cleaned food descriptions
+
+Content first needs to be filtered for source_type=='Compounds' which is where you'll find polyphenols. 
+  - source_type == 'Nutrients' retrieves 'classical nutrients' in dietary reporting
+  
+```{r Merge phenol Compound data with Content Data}
+#Filter for compounds
+Content_filtered = Content %>% 
+  filter(source_type == 'Compound')
+```
+
+Let us merge and clean our file for export. 
+```{r}
+FooDB_phenol_content = Content_filtered %>%
+  filter(source_id %in% FooDB_phenols$id) %>%
+  left_join(FooDB_phenols, by = c('source_id' = 'id')) %>%
+  left_join(Food, by = 'food_id') %>%
+  relocate('food_name', 'orig_food_part', 'food_public_id', .after = 'food_id') %>%
+  select(-c(state, moldb_iupac, cas_number, description, moldb_inchi,
+            moldb_inchikey, moldb_smiles, moldb_mono_mass, kingdom, klass, 
+            superklass, subklass, annotation_quality,
+            source_type)) %>% #remove Compound columns
+  select(-c(id, orig_food_scientific_name, orig_source_id, orig_source_name, 
+            orig_citation, orig_method, creator_id, updater_id, 
+            created_at, updated_at,  orig_unit_expression)) %>% #Remove Content columns
+  rename('compound_id' = 'source_id',
+         'compound_name' = 'name',
+         'compound_public_id' = 'public_id') %>%
+  relocate(compound_id, compound_public_id, compound_name, .before = orig_content) %>%
+  arrange(food_id)
+```
+
+
+It appears a soy entry slipped through an earlier cleaning step. Quickly correct and replace in content file.
+```{r}
+soy = FooDB_phenol_content %>% 
+  filter(food_id == 16420) %>% 
+  mutate(food_id = 272,
+         food_name = 'Other soy product',
+         food_public_id = 'FOOD00271')
+
+FooDB_phenol_content = FooDB_phenol_content %>%
+  filter(!food_id == 16420) %>%
+  add_row(soy)
+```
+
+
+### 4) Unit Check
+```{r}
+table(FooDB_phenol_content$orig_unit)
+```
+SW Update:  
+Manually cross-checked phenol entries with citation reference across several unit types. It appears 'orig_content' entries reflect mg/100 mg values and not units presented in orig_unit.
+ - *FooDB Error*: where orig_unit == 'mg/kg', online FooDB.ca are in mg/g values but are reported as mg/100g.
+
+Preparation for Export: 
+  1) We will update orig_unit to reflect the unit presented in orig_content.
+  2) Create average original content column to replicate values observed on [FooDB.ca](www.foodb.ca). 
+  - *Note* - This action also moves up from the ingredient level to a broader food classification.
+  - *Note* - This action removes individual entries that went into the average.
+  
+```{r}
+#Merge with unit file
+FooDB_phenol_content_updated = FooDB_phenol_content %>%
+  mutate(orig_unit_updated = 'mg/100g') %>%
+  group_by(compound_public_id, food_id) %>%
+  mutate(orig_content_avg = mean(orig_content, na.rm = TRUE)) %>% #Average
+  ungroup() %>% #NEW
+  relocate(orig_content_avg, .before = orig_unit) %>% 
+  relocate(food_public_id, .before = food_name) %>%
+  relocate(food_V2_ID, .before = orig_food_common_name) %>%
+  distinct(food_id, compound_id, .keep_all = TRUE) %>% #Removes ind. entries
+  select(-c(orig_food_id, orig_food_part, orig_content, orig_min, orig_max,
+            standard_content, export)) %>%
+  group_by(food_id) %>%
+  arrange(compound_id, .by_group = TRUE)
+```
+
+```{r}
+#Export Compound & Content Information
+write.csv(FooDB_phenol_content_updated, 'FooDB/FooDB_phenol_content.csv.bz2', 
+          row.names = FALSE)
+```
+
+
+### 5) Polyphenol Totals and Updating the Content File
+
+Create dataframe with polyphenol totals for each food_id within FooDB. *Total_pp* and *Total_pp_adj* units are mg/100g
+```{r}
+Food_Sums = FooDB_phenol_content_updated %>%
+  drop_na(food_id) %>%
+  group_by(food_id) %>%
+  mutate(total_pp = sum(orig_content_avg, na.rm = TRUE)) %>%
+  distinct(food_id, .keep_all = TRUE) %>%
+  select(c(food_id, food_public_id, food_name, total_pp)) %>%
+  arrange(desc(total_pp))
+
+#Stray Entry originating from Content file that needs updated
+num899 = Food_Sums %>% filter(food_id == 899) %>%
+  mutate(food_name = 'meats')
+```
+
+
+Quantified, Unquantified, Predicted Column Creation
+```{r}
+Food_Sums_Full_List = Food_Sums %>%
+  ungroup() %>%
+  filter(!food_id ==899) %>%
+  add_row(num899) %>%
+  full_join(Food) %>%
+  mutate(Status = case_when(
+    total_pp > 0 ~ 'Quantified',
+    total_pp == 0 ~ 'Unquantified but Predicted or Expected')) %>%
+  mutate(Status = coalesce(Status, 'Polyphenols Absent in FooDB')) #replace NAs
+```
+
+
+Identify meat and seafood foods from 'Unquantified but Predicted or Expected'. Zero them and reclassify them as quantified. 
+```{r}
+#Identify meat and seafoods 
+meat_seafood = data.frame(food_id = c(334, 505, 549, 399, 293, 483, 541, 
+                                       535, 590, 358, 373, 280, 303, 310,
+                                       316, 319, 317, 354, 364, 365, 378,
+                                       383, 430, 435, 438, 451, 491, 540, 
+                                       542, 555, 554, 595, 611, 624, 625),
+                           total_pp_adj = 0,
+                           Status_adj = 'Quantified') %>%
+  left_join(Food_Sums_Full_List, by = 'food_id') %>%
+  relocate(total_pp_adj, Status_adj, .after = Status)
+```
+
+
+Reclassify 'Polyphenols Absent in FooDB' as zeros.  
+Reclassify 'Unquantified but Predicted or Expected' as NAs, except for the meat and seafood foods which have already been re-quantified as zeros.  
+  - per Danielle's recommendation, email 2/10/23
+```{r}
+#These foods have no linked polyphenols in FooDB
+Absent_adjusted = Food_Sums_Full_List %>% 
+  filter(Status == 'Polyphenols Absent in FooDB') %>%
+  mutate(total_pp_adj = 0,
+         Status_adj = 'Quantified')
+
+# These foods do have linked polyphenols in FooDB but there's no available concentration
+Unquantified_Adjusted = Food_Sums_Full_List %>% 
+  filter(Status == 'Unquantified but Predicted or Expected') %>%
+  filter(!food_id %in% meat_seafood$food_id) %>%
+  mutate(total_pp_adj = 'NA',
+         Status_adj = 'Unquantified but Predicted or Expected') %>%
+  mutate(total_pp_adj = as.numeric('NA'))
+```
+
+Merge edits and Export.
+```{r}
+Food_Sums_Full_List_final = Food_Sums_Full_List %>%
+  filter(Status == 'Quantified') %>%
+  mutate(total_pp_adj = total_pp,
+         Status_adj = 'Quantified') %>%
+  full_join(meat_seafood) %>%
+  full_join(Absent_adjusted) %>%
+  full_join(Unquantified_Adjusted)
+
+write.csv(Food_Sums_Full_List_final, 'FooDB/FooDB_phenol_content_foodsums.csv',
+          row.names = FALSE)
+```
+
+

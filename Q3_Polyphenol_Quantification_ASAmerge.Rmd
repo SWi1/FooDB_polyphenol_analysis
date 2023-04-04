@@ -1,0 +1,160 @@
+---
+title: "Q3_Polyphenol_Quantification_ASAMerge"
+author: "Stephanie Wilson"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+#  Polyphenol Quantification
+## Step 03: Merger with ASA
+
+__Required Input Files__.                          
+  - *codematched_final.csv* - Output from 08_FooDB_FNDDS_FullMatch_Part5    
+  - *ingredientized_asa_10-2022.csv* - Output from 04_ingredientize_merge.rmd script, 'Ingredientized' Quality Controlled ASA24 Recall Data from FL100 Study.  
+  - *FooDB_phenol_content.csv.bz2* - Output from Q2_Polyphenol_Quantification_Units
+  - *Food_updated.csv* - 01_FooDB_FooDBCleaning.ipynb
+  - *WWEIA_Category_codes.csv* - Food classification codes from [WWEIA 2017-2018](https://www.ars.usda.gov/ARSUserFiles/80400530/pdf/1718/Food_categories_2017-2018.pdf)
+
+  
+__Information__. 
+This script merges ingredients within recall data to their ingredient equivalent in FooDB. The resulting output is subsequently merged with the FooDB polyphenol content file. 
+    1) Merger of dietary recall data with FooDB matches and then polyphenol content  
+      - This step also includes the creation of a new column, **pp_consumed**, which is the amount of polyphenols consumed in milligrams. 
+
+__Output__. 
+  - *FooDB/FooDB_phenol_content_ASAmerged.csv.bz2*
+
+```{r message=FALSE}
+library(tidyverse)
+```
+
+
+```{r Load Data}
+#FooDB polyphenol quantities
+FooDB_mg_100g = read.csv('FooDB/FooDB_phenol_content.csv.bz2') %>%
+  distinct(food_id, compound_id, .keep_all = TRUE) %>%
+  select(-c(food_name, orig_food_common_name)) %>%
+  relocate(orig_content_avg, orig_unit_updated, .before = citation)
+
+#Ingredientized ASA codes matched to FooDB
+matched = read.csv('data/codematched_final.csv') %>%
+  relocate('food_V2_ID', 'orig_food_common_name', .before = Ingredient_code) %>%
+  select(-Ingredient_description)
+
+#Ingredientized ASA
+ingredients = read.csv('Ingredientize/data/ingredientized_asa_10-2022.csv') %>%
+  select(-c(WWEIA.Category.description, UserID, , EatWith)) %>%
+  select(-(KCAL:D_CHEESE)) # remove ASA nutrient information
+
+# WWEIA Category Codes with Food Classificiations
+WWEIAcodes = read.csv('data/WWEIA_Category_Codes.csv', row.names = 1) %>%
+  select(-WWEIA.Category.description)
+
+#Load updated FooDB Food ID's
+food_sums = read.csv('FooDB/FooDB_phenol_content_foodsums.csv') 
+```
+
+
+### 1) Merger of dietary recall data with FooDB matches 
+Merge is based on food_id. 
+
+Link matched ASA/FooDB matched descriptions. Result is ingredientized ASA matched to FooDB.
+```{r}
+ASA = left_join(ingredients, matched, by = 'Ingredient_code') %>%
+  relocate(Ingredient_code, Ingredient_description, food_id, food_V2_ID, 
+           orig_food_common_name, mean_score, .after = Food_Description) %>%
+  left_join(WWEIAcodes, by = 'WWEIA.Category.number') %>%
+  relocate(RecallNo, .after = UserName) %>%
+  relocate(Food_Category, Food_Subcategory, .before = WWEIA.Category.number) %>%
+  select(-c(food_V2_ID, orig_food_id, fndds_description, IntakeStartDateTime, 
+            IntakeEndDateTime, RecallAttempt))
+```
+
+Merge FooDB-matched ASA Ingredient Codes with FooDB Polyphenol Content File.
+  - Link between FooDB Polyphenol Content and ASA code-matched data is *food_id*.
+```{r}
+ASA_FooDB = ASA %>%
+  left_join(FooDB_mg_100g, by = 'food_id')
+```
+
+
+### 2) Updating Content entries
+
+Subset anything that wasn't originally quantified (Identified as 'Polyphenols Absent in FooDB' and  'Unquantified but Predicted or Expected' in Q2 Script).
+```{r}
+#subset ids to be updated
+id_updates = food_sums %>%
+  filter(!Status == 'Quantified') %>%
+  select(-c(Status, total_pp, Status_adj, food_public_id, food_name))
+
+content_updates = ASA_FooDB %>%
+  filter(food_id %in% id_updates$food_id) %>%
+  left_join(id_updates, by = 'food_id') %>%
+  select(-orig_content_avg) %>% #drop old values
+  rename('orig_content_avg' = 'total_pp_adj') #replace with new values
+```
+
+
+```{r}
+#subset status adjustment column to merge
+status = food_sums %>%
+  select(c(food_id, food_name, Status_adj))
+
+# create the new file with the adjusted contents
+# Add status adjustment tag to the updated content file so we can trace what we've updated
+ASA_FooDB_adj = ASA_FooDB %>%
+  filter(!food_id %in% id_updates$food_id) %>% #remove updated entries from original file
+  full_join(content_updates) %>% #Add updated entries back in
+  left_join(status, by = 'food_id') %>%
+  relocate(food_name, .after = food_id)
+```
+
+
+### 3) Adjusting Tea and Coffee Beverages
+
+FooDB values for tea and coffee are provided as dry weight and require adjustment for brewing. The following ratios were used for adjustment:  
+  - *Tea*: 1g dry weight per 50 mL water 
+    -  [(Kowalsa et al 2021)](https://doi.org/10.3390/molecules26164773)
+  - *Coffee*: 10 g dry weight per 180 mL water
+    -  [SCA Golden Cup Standard, American](https://sca.coffee/research/protocols-best-practices)
+
+Tea Adjustment    
+```{r}
+#FoodB food_ids for tea products
+tea_food_ids = c(1021, 957, 38, 940, 849, 939, 517, 748)
+
+tea = ASA_FooDB_adj %>%
+  filter(food_id %in% tea_food_ids) %>%
+  mutate(pp_consumed = (orig_content_avg*0.01) * (Ingredient_consumed_g*(1/50)))
+```
+
+Coffee Adjustment
+```{r}
+#FoodB food_ids for coffee products
+coffee_food_ids = c(891, 60, 58, 59)
+
+coffee = ASA_FooDB_adj %>%
+  filter(food_id %in% coffee_food_ids) %>%
+  mutate(pp_consumed = (orig_content_avg*0.01) * (Ingredient_consumed_g*(10/180)))
+```
+
+Replace coffee and tea values. Add pp_consumed column by multiplying amount of the polyphenol content (mg/100g multiply by 0.01 to get mg/g) by ingredient consumed (grams) to get the polyphenol amount consumed (mg).
+```{r message = FALSE}
+ASA_FooDB_updated = ASA_FooDB_adj %>%
+  filter(!food_id %in% tea_food_ids) %>%
+  filter(!food_id %in% coffee_food_ids) %>%
+  mutate(pp_consumed = (orig_content_avg*0.01) * Ingredient_consumed_g) %>%
+  full_join(tea) %>%
+  full_join(coffee) %>%
+  select(-Modified) %>%
+  relocate(pp_consumed, orig_content_avg, .before = orig_unit)
+```
+
+```{r EXPORT}
+write.csv(ASA_FooDB_updated, 'FooDB/FooDB_phenol_content_ASAmerged.csv.bz2', 
+          row.names = FALSE)
+```
+
+
+Since we created orig_content_avg, The file needs additional cleaning to remove the additional polyphenol entries 
+

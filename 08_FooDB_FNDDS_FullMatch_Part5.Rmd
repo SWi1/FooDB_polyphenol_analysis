@@ -1,0 +1,325 @@
+---
+title: "08_FooDB_FNDDS_FullMatch_Part5"
+author: "Stephanie Wilson"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+#  Matching FooDB to ASA24 Ingredient Descriptions
+## Step 8: Matching ASA24 to FooDB
+## Part 5: Rerunning Text Similarity and PRO Matching for poor text matches
+
+__Required Input Files__  
+  - *asa_foodb_descrip_dependencies_updated.csv* - Output from 05_FooDB_FNDDS_FullMatch_Part2
+  - *Food_V2_descripcleaned.csv* - output from 02_FooDB_TextProcessing
+  - *foodb_macros_g.csv* - Output from 06_FooDB_FNDDS_FullMatch_Part3
+  - *codematched_semifinal.csv* - Output from 07_FooDB_FNDDS_FullMatch_Part4
+  - *2017-2018 FNDDS At A Glance - Ingredient Nutrient Values.xlsx* - downloaded from [BHNRC database](https://www.ars.usda.gov/northeast-area/beltsville-md-bhnrc/beltsville-human-nutrition-research-center/food-surveys-research-group/docs/fndds-download-databases/)
+  
+__Information__
+ASA codes at this point have been matched based on:
+  - code-matching: ASA's Ingredient code -> FooDB's orig_source_id (Script 04, Part 1)
+  - pattern searching of FooDB with a dependency-based ASA descriptor term (Script 05, Part 2) which requires additional checks for fit such as text similarity and carbohydrate matching (Script 06, Part 3)
+  - pattern searching with a simplified dependency descriptor, with text similarity and carbohydrate matching (Script 07, Part 4)
+    
+Codes with poor text similarity scores will be re-evaluated and searched against FooDB with a **manually entered** dependency descriptor. Matches will be determined from a score comprised of text similarity Rank, CHO Rank, PRO Rank, and Iron Rank (2 * Text Similarity Rank + CHO Rank + PRO Rank + Iron Rank).
+
+__Output__
+  - *codematched_final.csv* 
+
+
+```{r Load packages, include= FALSE, warning=FALSE, message=FALSE}
+library(tidyverse); library(readxl); library(stringdist)
+```
+
+
+```{r Load data}
+asa_dependency = read.csv("data/asa_foodb_descrip_dependencies_updated.csv", 
+                          header=TRUE) %>%
+  select(c(Ingredient_code, Ingredient_description, searchterm2))
+
+matched = read.csv('data/codematched_semifinal.csv', header = TRUE)
+Food_V2 = read.csv('FooDB/FooD_V2_descripcleaned.csv', header = TRUE)
+foodb_macros_g = read.csv('FoodB/foodb_macros_g.csv', header = TRUE)
+
+fndds = read_xlsx('data/2017-2018 FNDDS At A Glance - Ingredient Nutrient Values.xlsx', 
+                  skip = 1) %>% 
+  filter(`Nutrient description` %in% 
+           c('Protein', 'Total Fat', 'Carbohydrate', 'Iron')) %>%
+  select(c(`Ingredient code`, `Nutrient description`, `Nutrient value`))
+
+  #replaces spaces in FNDDS column names with underscores
+  colnames(fndds) = gsub(' ', '_', colnames(fndds)) 
+```
+
+
+```{r Create low score file}
+# Identify mean text similarity scores under 0.5
+lowscores = matched %>%
+  filter(mean_score < 0.5) %>%
+  left_join(asa_dependency) 
+
+# Create a separate data frame to start reassessment of these ASA codes
+# We can keep low scores for reference
+missing = lowscores %>%
+  select(c(Ingredient_code, Ingredient_description, searchterm2))
+```
+
+### 1) Manual Addition of Search Terms
+The 68 Ingredient Descriptions were manually reviewed for key search terms.
+```{r}
+missing$searchterm = c('rice|milk', 'tea', 'chicken.*skin|skin.*chicken', 
+                       ' tea ', 'pasta', ' tea ', ' cola ', ' tea ', 
+                       'coffee', 'beef', 'sausage.*beef|beef.*sausage', 
+                       'milk', ' tea ', 
+                       'energy.*drink', 'energy.*drink', 'salsa', 'whey', 
+                       'energy|bar', 'chicken.*deepfried|chicken.*deepfried', 
+                       'chicken.*deepfried|chicken.*deepfried', 'mango', 
+                       'carbonated.*beverage', 'sausage.*biscuit|biscuit.*sausage', 
+                       'beef|cheese', 'vitamin', 'flesh.*chicken|chicken.*flesh', 
+                       'coconut.*water|water.*coconut', 
+                       'chicken.*deepfried|chicken.*deepfried', 'ham', 
+                       'bread.*garlic|garlic.*bread', 'granola', 
+                       'cookie.*chocolate|chocolate.*cookie', 'soy.*sauce', 
+                       'whey', 'energy.*drink', 'protein.*supplement', 'beer', 
+                       'pretzel|chocolate', 'gluten.*free|bread', 'turkey', 
+                       'rice', 'cookie.*peanut|peanut.*cookie', 'lamb', 
+                       'ensure', 'lamb', 'lamb', 'bread','chocolate', 'syrup', 
+                       'chicken.*deepfried|chicken.*deepfried', ' bean ', 
+                       'sweetener', 'potsticker|wonton', 
+                       'protein.*supplement|milk.*supplement')
+```
+
+
+### 2) Match Ingredient Codes
+
+Load function for downstream filtering.
+```{r text similarity function}
+sim_score <- function(x, asa_descrip, foodb_descrip){
+  metric = x #where x is a list of text similarity metrics accepted by stringsim
+  asa_descrip = asa_descrip #df column of asa ingredient descriptions
+  foodb_descrip = foodb_descrip #df column of foodb ingredient descriptions
+  output = data.frame(matrix(ncol=length(metric), nrow=length(asa_descrip)))
+
+#run text similarity with each metric  
+for(i in seq_along(metric)){ 
+  output[[i]] = stringsim(asa_descrip, foodb_descrip, 
+                          method = metric[[i]], p = 0.1)
+}
+  
+  colnames(output) = metric # rename column names
+  output = output %>% add_column(asa_descrip, foodb_descrip) %>% # add columns
+    relocate(asa_descrip, foodb_descrip) # relocate descriptions to front
+  
+  return(output)
+}
+```
+
+
+Looping the grepl search through each search term and adding resulting output to a dataframe for macronutrient checking. **Requires**:
+  - Food_V2: full set of FooDB descriptions
+  - missing: dataframe of terms to be matched, needs columns: Ingredient_description, searchterm
+        - here we will use codes with low scores as 'missing'
+  
+```{r grepl search, warning = FALSE}
+finaloutput = data.frame()
+
+for(i in 1:nrow(missing)){
+  
+# Part I - filter by pattern search
+input = Food_V2 %>%
+  select(food_V2_ID, orig_food_common_name) %>%
+  filter(grepl(missing[i, ]$searchterm, orig_food_common_name, ignore.case = TRUE))
+
+# Part II - Run function to calculate multiple text similarity scores
+scores_auto = sim_score(x = c("osa", "lv", "dl", "hamming", "lcs", 
+                              "qgram", "cosine", "jaccard", "jw", "soundex"), 
+                        asa_descrip = rep(missing[i, ]$Ingredient_description, times = nrow(input)), 
+                        foodb_descrip = input$orig_food_common_name)
+
+# Part III - Add FooDB ID column
+scores_auto$food_V2_ID = input$food_V2_ID
+
+## Part IV - Calculate Mean of text similarity indices
+scores_auto = scores_auto %>%
+  mutate(scores_auto, mean_score = 
+           rowMeans(select(scores_auto, c(osa, lv, dl, hamming, lcs, 
+                                          qgram, cosine, jaccard, jw, soundex)))) 
+
+# Part V - Filter in top five scores for macronutrient comparison
+# Highest score given larger number
+output = scores_auto %>%
+  top_n(mean_score, n = 5) %>%
+  mutate(text_rank = dense_rank(desc(mean_score)))
+
+finaloutput = rbind(finaloutput, output)
+}
+```
+
+
+Let us check to confirm that we have no remaining codes to search.
+```{r}
+message('Number of unique codes that DID NOT come through the grepl search: ', 
+        nrow(missing) - length(unique(finaloutput$asa_descrip)))
+```
+
+If zero, all codes were either code matched or found a grepl search. When there are no codes left, prepare the output file for downstream use. 
+
+```{r}
+# remove everything but the descriptions and mean score.
+finaloutput1 = finaloutput %>% 
+  select(c(asa_descrip, foodb_descrip, food_V2_ID, mean_score, text_rank)) %>%
+  rename(c('Ingredient_description' = 'asa_descrip', 
+           'orig_food_common_name' = 'foodb_descrip'))
+
+# Prepare ASA IDs
+matched2 = matched %>%
+  select(c(Ingredient_code, Ingredient_description))
+
+# Add ASA IDs
+finaloutput.updated = left_join(finaloutput1, matched2) %>%
+  left_join(Food_V2) %>%
+  select(c(Ingredient_code, Ingredient_description, orig_food_common_name, 
+           food_V2_ID, mean_score, text_rank, orig_food_id))  %>%
+  relocate('Ingredient_code', 'Ingredient_description','orig_food_id',
+           'orig_food_common_name', 'food_V2_ID', .before = mean_score)
+```
+
+
+### 2) Match Carbohydrate, Protein, and Iron similarity
+#### 2a) Prepare FoodB and ASA Macronutrient files
+
+```{r Filter in FooDB Content Information for our Ingredient Codes}
+foodb_macros_g = foodb_macros_g %>%
+  filter(food_V2_ID %in% finaloutput.updated$food_V2_ID)
+```
+
+ASA nutrient values are the amounts per 100 grams edible portion
+```{r Merge ASA missing food items with FNDDS nutrient values}
+asa_macros = missing %>%
+  select(c('Ingredient_code', 'Ingredient_description')) %>%
+             left_join(fndds, missing, by = 'Ingredient_code') %>%
+  filter(Ingredient_code %in% finaloutput.updated$Ingredient_code) %>%
+  rename('ASA_Macro' = 'Nutrient_description',
+         'ASA_Value' = 'Nutrient_value') 
+```
+
+
+```{r message = FALSE}
+#Merge to-match ASA Ingredient Descriptions with their FNDDS macronutrient profiles.
+Macro_matching = left_join(finaloutput.updated, asa_macros, 
+                           by = 'Ingredient_code',
+                           keep= FALSE) %>%
+  select(-Ingredient_description.y) %>%
+  rename('Ingredient_description' = 'Ingredient_description.x')
+
+Macro_matching =  left_join(Macro_matching, foodb_macros_g) %>%
+  select(-c(id, foodb_descrip))
+```
+
+Generate CHO, PRO, Iron Subsets  
+Generate a rank based on how close FooDB nutrient values are to ASA nutrient values.  
+  - Lower scores go to *most* similar values.
+  - Filter based off of lowest scores
+```{r}
+CHO = Macro_matching %>% 
+  filter(ASA_Macro =='Carbohydrate') %>% 
+  filter(FooDB_Nutrient == 'CHO') %>% 
+  group_by(Ingredient_code) %>%
+  mutate(CHO_Rank = dense_rank(abs(FooDB_Value - ASA_Value)))  %>%
+  select(c(Ingredient_code, food_V2_ID, mean_score, text_rank, CHO_Rank)) 
+
+PRO = Macro_matching %>% 
+  filter(ASA_Macro =='Protein') %>% 
+  filter(FooDB_Nutrient == 'PRO') %>% 
+  group_by(Ingredient_code) %>%
+  mutate(PRO_Rank = dense_rank(abs(FooDB_Value - ASA_Value)))  %>%
+  select(c(Ingredient_code, food_V2_ID, mean_score, text_rank, PRO_Rank)) 
+
+Iron = Macro_matching %>% 
+  filter(ASA_Macro =='Iron') %>% 
+  filter(FooDB_Nutrient == 'Iron') %>% 
+  group_by(Ingredient_code) %>%
+  mutate(Iron_Rank = dense_rank(abs(FooDB_Value - ASA_Value)))  %>%
+  select(c(Ingredient_code, food_V2_ID, mean_score, text_rank, Iron_Rank)) 
+```
+
+Let us recombine Macros for Assessment
+```{r message = FALSE}
+scores = finaloutput.updated %>%
+  left_join(CHO) %>%
+  left_join(PRO) %>%
+  left_join(Iron)
+
+scores = scores %>%
+  rowwise() %>%
+  mutate(AvgTextCHO_Rank = mean(c(text_rank, CHO_Rank)),
+    Macro_Total = sum(c(CHO_Rank, PRO_Rank)),
+    Total = sum(c(text_rank*2, CHO_Rank, PRO_Rank, Iron_Rank)))
+```
+
+#### 2b) Filtering
+
+*Missing Macros* - Check which Text and CHO Rank Averages are missing. Grab the other entries with the same Ingredient codes. Identify best entry based on text similarity.
+```{r}
+NA.Macros = scores %>%
+  filter(is.na(CHO_Rank)) 
+
+NA.Macros.hits = NA.Macros %>%
+  filter(Ingredient_code %in% NA.Macros$Ingredient_code) %>%
+  group_by(Ingredient_code) %>%
+  filter(mean_score == max(mean_score, na.rm=TRUE)) %>%
+  distinct(mean_score, .keep_all = TRUE)
+
+message('Number of unique codes that do not have macronutrient data: ', length(unique(NA.Macros$Ingredient_code)))
+```
+
+```{r}
+#In codes with macronutrient data, filter first on average text/CHO rank
+#then filter second on highest mean text similarity score
+Macros.hits = scores %>% 
+  filter(!Ingredient_code %in% NA.Macros.hits$Ingredient_code) %>%
+  group_by(Ingredient_code) %>%
+  filter(Total == min(Total, na.rm=TRUE)) %>% #Key filter
+  filter(mean_score == max(mean_score)) %>% #If duplicates exist
+  distinct(mean_score, .keep_all = TRUE)
+
+message('Number of unique codes that have macronutrient data: ', length(unique(Macros.hits$Ingredient_code)))
+```
+
+```{r message = FALSE}
+#Merge the two lists with their new matches 
+greplhits = full_join(NA.Macros.hits, Macros.hits) %>%
+  mutate(orig_food_id = as.integer(orig_food_id)) %>%
+  select(c(Ingredient_code, Ingredient_description, orig_food_id, 
+           orig_food_common_name, food_V2_ID, mean_score))
+```
+
+### 3) Merge reassessed final scores to Final File 
+
+
+```{r}
+#Let us add food_id back in
+Food_V2_insert = Food_V2 %>% 
+  select(food_V2_ID, food_id)
+
+codematched_final = matched %>%
+  filter(!Ingredient_code %in% greplhits$Ingredient_code) %>%
+  full_join(greplhits) %>%
+  left_join(Food_V2_insert, by = 'food_V2_ID') %>%
+  relocate(food_id, .before = 'food_V2_ID')
+
+#Number of scores now less than 0.5
+#At the start of this script, we had 68 codes with a score < 0.5
+codematched_final %>% filter(mean_score < 0.5) %>% count()
+
+write.csv(codematched_final, 'data/codematched_final.csv',
+          row.names = FALSE)
+```
+
+
+
+
+
+
+
