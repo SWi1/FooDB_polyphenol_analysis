@@ -1,8 +1,8 @@
 # READ ME
-
-# Stephanie Wilson, January 2022
+Stephanie Wilson, February 2023
 
 ## Summary
+These scripts are for the project related to the identification and quantification of dietary polyphenols in the USDA FL100 Phenotyping Study Cohort. Dietary polyphenolic data is derived from FooDB which these scripts also address.
 
 ## Required Software
 
