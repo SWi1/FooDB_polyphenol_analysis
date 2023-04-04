@@ -21,7 +21,7 @@ These scripts are for the project related to the identification and quantificati
     2)  Compound.csv (requires additional bzip2)
     3)  Food.csv  
 
--   **FooDB Polyphenols SDF**, on GitHub [page](ADDLINK)
+-   **FooDB Polyphenols SDF**, on GitHub [page](https://github.com/SWi1/Polyphenol_Quantification_FooDB/blob/main/FooDB/FooDB2_polyphenols_ID.sdf)
     1)   SDF files contain atom and bond information to visualize compounds. Chemical visualization software (authors used MarvinView) can read SDF files to view these polyphenol structures.
 
 -   **Dietary Recall Data**, Downloadable as Items Analysis File from ASA24 Researcher Site
