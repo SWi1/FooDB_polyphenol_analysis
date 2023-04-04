@@ -1,0 +1,111 @@
+---
+title: "04_ingredientize_merge"
+output: html_document
+date: "2022-09-29"
+---
+
+
+# Ingredientize ASA24 food records
+### Step 4: Creation of full ASA Ingredientization File
+
+__Required Input Files__  
+  - *asa_fndds_matched.csv* - From 02_ingredientize_mixedfoods output
+  - *ingred_recode_remapped10202022.csv* - From 03_ingredientize_code_remap output
+  
+## Information  
+This script does the following:
+
+  1) Cleans the ASA/FNDDS + remap merge
+  2) Add cleaned merged data to ASA data that did not need remapping
+  3) Create Ingredient Consumed Total in ASA24 
+
+__Output__    
+  - *data/ingredientized_asa_10-2022.csv* - Ingredientized ASA data from FL100 Study
+  
+
+```{r Load Packages, message=FALSE}
+library(tidyverse)
+```
+
+```{r LOAD DATA}
+# Load combined ASA24 and FNDDS data
+# Filter in specific columns to view data
+asa = read.csv('data/asa_fndds_matched.csv') %>%
+  rename('Ingredient_code' = 'Ingredient.code')
+
+
+# Load remapped food_ingredient code data
+code_remap = read.csv('data/ingred_recode_remapped10202022.csv') %>%
+  select(-Ingredient_description_x)
+```
+
+
+### 1) Clean Recode File
+
+```{r MERGE DATA FILES}
+asa_recode = full_join(asa, code_remap, by = 'Ingredient_code')
+```
+
+
+```{r Clean Recode File}
+# Create a list of hits from our remapped codes
+matches = as.list(code_remap$Ingredient_code)
+
+# Filter in Ingredient Codes that are in our code_remap file
+# drop specific rows
+# rename rows
+asa_recode = asa_recode %>%
+  filter(Ingredient_code %in% matches) %>%
+  select(-c(Ingredient_code, Ingredient.description, Ingredient.weight..g., 
+           Ingredient_weight_g_x)) %>%
+  rename('Ingredient_code' = 'Ingredient_subcode', 
+         'Ingredient_description' = 'Ingredient_description_y',
+         'Ingredient_weight_g' = 'Ingredient_weight_g_y')
+```
+
+
+### 2) Filter and Merge in Ingredient Codes that did not need to be ingredientized
+```{r FILTER}
+asa =  asa %>%
+  rename('Ingredient_description' = 'Ingredient.description',
+         'Ingredient_weight_g' = 'Ingredient.weight..g.') %>%
+  filter(Ingredient_code <10000000) 
+```
+
+```{r MERGE}
+asa_all = full_join(asa, asa_recode)
+```
+
+
+
+### 3) Create Ingredient Consumed Total in ASA24
+
+Generate amount consumed (g) for 'ingredientized' food codes. First, calculate 'Ingredient weight total' (in grams) to be used to generate proportion of Ingredient:
+$Proportion\:of\:Ingredient = (Ingredient\:weight\:(g))/(Ingredient\:weight\:total)$. 
+
+where Ingredient weight total is the sum of ingredient weights (in grams) for each remapped Ingredient code. This calculation is input into the following:      
+$Ingredient\:consumed\:(g) = FoodAmt\: * Proportion \: of\:Ingredient$
+
+```{r}
+#Calculate Ingredient weight totals
+totals = asa_all %>% 
+  distinct(FoodCode, Ingredient_code, .keep_all = TRUE) %>%
+  group_by(FoodCode) %>%
+  summarise(Ingredient_weight_total_g = sum(Ingredient_weight_g))
+
+#Merge the Ingredient Totals
+# Create 'Proportion_ingredient' column
+# Create 'Ingredient_consumed_g' column
+asa_all = left_join(asa_all, totals) %>%
+  mutate(Proportion_ingredient = Ingredient_weight_g/Ingredient_weight_total_g) %>%
+  mutate(Ingredient_consumed_g = FoodAmt * Proportion_ingredient) %>%
+  relocate(Ingredient_weight_total_g, Proportion_ingredient, 
+           Ingredient_consumed_g, .after = Ingredient_weight_g)
+```
+Note: asa_all should join only by FoodCode. If it is joining by FoodCode and Ingredient_weight_g, then rerun section '2) Filter and Merge in Ingredient Codes that did not need to be ingredientized'.
+
+
+```{r EXPORT}
+write.csv(asa_all, 'data/ingredientized_asa_10-2022.csv', row.names = FALSE)
+```
+

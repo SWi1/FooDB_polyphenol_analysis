@@ -1,0 +1,162 @@
+---
+title: "02_ingredientize_mixedfoods"
+output: pdf_document
+date: "2022-09-23"
+---
+
+# Ingredientize ASA24 food records
+## Step 2: Ingredientize mixed foods
+
+__Required Input Files__
+  - *fndds_missing_foods.csv* - Output from 01_ingredientize_unmatchedfoods, FNDDS Missing Foods replaced with closest description
+  - *FNDDS Ingredient Data* - downloaded September 22, 2022 as an xlsx file from the USDA ARS FNDDS [website](https://www.ars.usda.gov/northeast-area/beltsville-md-bhnrc/beltsville-human-nutrition-research-center/food-surveys-research-group/docs/fndds-download-databases).
+  - *fl100_recalls_qcd.csv* - Quality Controlled ASA24 Recall Data from FL100 Study
+  
+__Information__  
+This script does the following:
+
+  1) Replaces missing food codes in the ASA24 participant data with the new food codes.
+  
+Missing foods (output identified in script *01_ingredientize_unmatchedfoods_asa24_fndds*) from FNDDS 2018 were manually curated with the closest suitable description with two foods having no match. An updated version of the missing foods file (with closest suitable description) is loaded as new_codes.
+
+_Output_ 
+  - *asa_fndds_matched.csv*
+
+```{r Load packages, message=FALSE}
+library(tidyverse) #loads data manipulation packages
+library(readxl) #reads Excel File
+```
+
+
+```{r}
+#Load data for food codes that were replaced with FNDDS 2018
+new_codes = read.csv('data/fndds_missing_foods_replaced.csv')
+
+#Load in FL100 ASA24 Data
+asa24 = read.csv('data/fl100_recalls_qcd.csv', header = TRUE)
+```
+
+
+```{r}
+#Sort NewFoodCode data by ascending order. Extra step to Assess if there are any missing food codes,indicated by value 9. Can adjust dimensions to check less/more rows. Currently set to look at first 50 rows.
+sort(new_codes$NewFoodCode)[1:50]
+```
+
+
+```{r}
+#Remove missing NewFoodCode in new_codes if there are any
+new_codes = new_codes %>% filter(!NewFoodCode =='9')
+
+#Remove missing food codes in ASA24
+asa24 = asa24 %>% filter(!FoodCode =='9' & !PortionCode == '9')
+```
+
+
+```{r}
+#drop missing rows where Food Description is missing
+asa24 = asa24 %>% drop_na(FoodCode)
+
+#drop missing rows where Food Description is missing
+asa24 = asa24 %>% drop_na(Food_Description)
+```
+
+
+```{r}
+#Create vector of Food Codes
+old = as.list(new_codes$FoodCode)
+
+#create vector of New Food Codes
+new = as.list(new_codes$NewFoodCode)
+```
+
+
+```{r}
+#Filter in Food Codes that ARE NOT in old (AKA, these codes were not missing in FNDDS)
+keep = asa24 %>% filter(!FoodCode %in% old) 
+#16772 obs
+```
+
+
+```{r}
+#Filter in Food codes that ARE in old (AKA, these foods were missing in FNDDS and need to be matched with the updated code)
+match_df = asa24 %>% filter(FoodCode %in% old)
+#2473 obs
+```
+
+
+```{r}
+#Add NewFoodCode keys to ASA24 in old
+match_df[["NewFoodCode"]] <- new_codes[match(match_df[['FoodCode']], new_codes[['FoodCode']]), 'NewFoodCode']
+
+#delete FoodCode Column (old Food codes)
+#Rename NewFoodCode to FoodCode, for merger with keep dataframe
+match_df = match_df %>% 
+  select(-c('FoodCode')) %>%
+  rename(rename('FoodCode' = 'NewFoodCode'))
+```
+
+
+```{r message=FALSE}
+# Merge ASA files by FoodCode Column. Merge includes dataframes that 1) had no missing FoodCodes ("keep") and 2) had missing FoodCodes but were replaced ("match).
+asa24_matched = full_join(match_df, keep)
+```
+
+
+## Merge ASA24 updated foodcodes with FNDDS to ingredientize
+```{r}
+#Load FNDDS data
+#Skip first row with File Description
+fndds = read_excel('data/2017-2018 FNDDS At A Glance - FNDDS Ingredients.xlsx', skip = 1)
+
+#Rename Specific Columns
+## FoodCode matches
+fndds = fndds %>% 
+  rename('FoodCode' = 'Food code',
+  'fndds_description' = 'Main food description')
+```
+
+
+```{r}
+# Merge ASA matched with the FNDDS 2018
+asa24_fndds = inner_join(asa24_matched, fndds, by ='FoodCode') 
+```
+
+
+```{r}
+#Identify unique ASA24 descriptions in both asa24 and merged asa24/fndds dataframes
+asa24_set = unique(asa24$Food_Description)
+asa24_fndds_set = unique(asa24_fndds$Food_Description)
+```
+
+
+```{r}
+#Identify what food descriptions are in ASA24 recalls (matched) but not included in FNDDS 
+unmapped = setdiff(asa24_set, asa24_fndds_set)
+length(unmapped)
+unmapped
+```
+
+
+```{r}
+#Relocate columns of interest to beginning of dataframe
+asa_fndds = asa24_fndds %>% relocate('UserName',
+ 'FoodCode',
+ 'Food_Description',
+ 'fndds_description',
+ 'WWEIA Category number',
+ 'WWEIA Category description',
+ 'FoodAmt',                
+ 'Seq num',
+ 'Ingredient code',
+ 'Ingredient description',
+ 'Ingredient weight (g)')
+```
+
+
+```{r}
+#Write missing foods to csv
+write.csv(asa_fndds, file='data/asa_fndds_matched.csv', row.names = FALSE)
+```
+
+
+

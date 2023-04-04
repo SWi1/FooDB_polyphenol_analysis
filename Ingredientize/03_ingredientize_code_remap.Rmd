@@ -1,0 +1,231 @@
+---
+title: "03_ingredient_code_remap"
+output: html_document
+date: "2022-09-29"
+---
+
+
+# Ingredientize ASA24 food records
+### Step 3: Code remapping
+
+__Required Input Files__  
+  - *asa_fndds_matched.csv* - From 02_ingredientize_mixedfoods output
+  - *2017-2018 FNDDS Ingredients data* - downloaded September 22, 2022 as an xlsx file from the USDA ARS FNDDS [website](https://www.ars.usda.gov/northeast-area/beltsville-md-bhnrc/beltsville-human-nutrition-research-center/food-surveys-research-group/docs/fndds-download-databases).
+  
+## Information  
+This script does the following:
+
+  1) Merges ASA 24 participant recall data with FNDDS 2017-2018.
+  2) Identifies 8 digit codes which can be broken down into underlying ingredients 
+  3) Iteratively goes through 8-digit food codes by mapping to FNDDS 2017-2018 to identify underlying food codes nested under the original "parent" food codes.
+  4) Formats the resulting remapped ingredient output for downstream use. 
+
+__Output__    
+  - *ingred_recode_remapped10202022.csv*
+  
+
+```{r Load Packages, message=FALSE}
+library(tidyverse) #loads data manipulation packages
+library(readxl) #reads Excel File
+```
+
+
+```{r LOAD DATA}
+#Load FNDDS data, Skip first row with File Description
+# drop unneeded columns
+# rename columns, new = old
+fndds = read_excel('data/2017-2018 FNDDS At A Glance - FNDDS Ingredients.xlsx', 
+                   skip = 1) %>%
+  select(-c('Main food description', 'WWEIA Category description', 
+                   'WWEIA Category number', 'Seq num', 'Retention code', 
+                   `Moisture change (%)`)) %>%
+  rename('Ingred_code' = 'Ingredient code',
+         'Ingredient.code' = 'Food code')
+
+#Load combined ASA24 and FNDDS data
+asa_fndds = read.csv('data/asa_fndds_matched.csv')
+```
+
+```{r FILTER DATA}
+# Extract all ingredient codes represented as 8-digit foodcodes
+  #drop duplicates in Ingredient Codes
+asa_fndds = asa_fndds %>% filter(Ingredient.code >10000000) %>%
+  distinct(Ingredient.code, .keep_all = TRUE)
+```
+
+
+```{r}
+#Merge ASA24 participant data and FNDDS 2018 on Ingredient code 
+asa_recode = inner_join(asa_fndds, fndds, by = 'Ingredient.code')
+
+#Write asa recode to csv
+write_csv(asa_recode, "data/asa_recode.csv")
+```
+
+
+```{r}
+#Filter Ingredient Codes with 8-digits
+asa_code_remap = asa_recode %>% filter(Ingred_code > 10000000)
+```
+
+
+```{r}
+#Drop duplicates
+asa_code_remap_unique = asa_code_remap %>% distinct(Ingred_code, .keep_all = TRUE)
+```
+
+### Following code is to iterate through the ingredient codes that contain an 8-digit foodcodes and merge with parent foodcode to find embedded ingredient codes, some ingredient codes require mapping iterations.
+  - 4, 5, and 6 digit food codes are based on Food Data Central codes while 8 digit are specific to FNDDS. 8 digit codes can be broken down in an iterative process to find underlying ingredients in a larger food code.
+  - Important: This code goes through five iterations but more may be required if 8 digit codes are still present.
+
+```{r}
+#write asa recode unique to csv
+write.csv(asa_code_remap_unique, "data/unique_codes_to_map.csv")
+```
+
+Iteration I
+```{r}
+#Rename Columns, New Name, Old Name
+asa_recode = asa_recode %>% 
+  rename('Ingredient_subcode' = 'Ingred_code')
+
+fndds = fndds %>% 
+  rename('Ingredient_subcode' = 'Ingredient.code')
+
+#Merge
+asa_recode2 = inner_join(asa_recode, fndds, by = 'Ingredient_subcode')
+
+#Keep For merging
+asa_recode2.OG = asa_recode2
+
+# Write Merged file to csv
+write.csv(asa_recode2, "data/asa_recode2.csv")
+```
+
+Iteration II
+```{r message = FALSE, warning=FALSE}
+#Rename Columns, New Name, Old Name
+asa_recode2 = asa_recode2 %>% 
+  rename('Ingredient_subcode2' = 'Ingred_code')
+
+fndds = fndds %>% 
+  rename('Ingredient_subcode2' = 'Ingredient_subcode')
+
+#Merge
+asa_recode3 = inner_join(asa_recode2, fndds, by = 'Ingredient_subcode2')
+
+#Keep For merging
+asa_recode3.OG = asa_recode3
+
+# Write Merged file to csv
+write.csv(asa_recode3, "data/asa_recode3.csv")
+```
+
+Iteration III
+```{r warning = FALSE, message=FALSE}
+#Rename Columns, New Name, Old Name
+asa_recode3 = asa_recode3 %>% 
+  rename('Ingredient_subcode3' = 'Ingred_code')
+
+fndds = fndds %>% 
+  rename('Ingredient_subcode3' = 'Ingredient_subcode2')
+
+#Merge
+asa_recode4 = inner_join(asa_recode3, fndds, by = 'Ingredient_subcode3')
+
+#Keep For merging
+asa_recode4.OG = asa_recode4
+
+# Write Merged file to csv
+write.csv(asa_recode4, "data/asa_recode4.csv")
+```
+
+
+Iteration IV
+```{r message = FALSE}
+#Rename Columns, New Name, Old Name
+asa_recode4 = asa_recode4 %>% 
+  rename('Ingredient_subcode4' = 'Ingred_code')
+
+fndds = fndds %>% 
+  rename('Ingredient_subcode4' = 'Ingredient_subcode3')
+
+#Merge
+asa_recode5 = inner_join(asa_recode4, fndds, by = 'Ingredient_subcode4')
+
+#Keep For merging
+asa_recode5.OG = asa_recode5
+
+# Write Merged file to csv
+write.csv(asa_recode5, "data/asa_recode5.csv")
+```
+
+
+Iteration V
+```{r message = FALSE}
+#Rename Columns, New Name, Old Name
+asa_recode5 = asa_recode5 %>% 
+  rename('Ingredient_subcode5' = 'Ingred_code')
+
+fndds = fndds %>% 
+  rename('Ingredient_subcode5' = 'Ingredient_subcode4')
+
+#Merge
+asa_recode6 = inner_join(asa_recode5, fndds, by = 'Ingredient_subcode5')
+
+#Keep For merging, keep the original
+# asa_recode6 can remain as is
+
+# Write Merged file to csv
+write.csv(asa_recode6, "data/asa_recode6.csv")
+```
+
+
+### Reformat for final mapping file ingred_recode_remapped_10202022.csv
+For _each_ recode iterations: 
+  - filter in the original ingredient code (rows 9-11) and the underlying ingredient codes (last three columns)
+  - Rename the column names in preparation of final merge. 
+  - filter in the Ingredient subcodes that are <10000000. These are the ones that do not have further ingredients subset. 
+    - There is no filtering step needed for recode6 
+    
+```{r}
+recode_col_names = c('Ingredient_code', 'Ingredient_description_x', 'Ingredient_weight_g_x', 'Ingredient_subcode', 'Ingredient_description_y', 'Ingredient_weight_g_y')
+
+asa_recode.OG = asa_recode[c(9:11,113:115)]
+  colnames(asa_recode.OG) = recode_col_names
+  asa_recode.filter = asa_recode.OG %>% filter(Ingredient_subcode < 10000000)
+
+asa_recode2.OG = asa_recode2[c(9:11, 116:118)]
+  colnames(asa_recode2.OG) = recode_col_names
+  asa_recode2.filter = asa_recode2.OG %>% filter(Ingredient_subcode < 10000000)
+
+asa_recode3.OG = asa_recode3.OG[c(9:11, 119:121)]
+  colnames(asa_recode3.OG) = recode_col_names
+  asa_recode3.filter = asa_recode3.OG %>% filter(Ingredient_subcode < 10000000)
+
+asa_recode4.OG = asa_recode4.OG[c(9:11, 122:124)]
+  colnames(asa_recode4.OG) = recode_col_names
+  asa_recode4.filter = asa_recode4.OG %>% filter(Ingredient_subcode < 10000000)
+
+asa_recode5.OG = asa_recode5.OG[c(9:11, 125:127)]
+  colnames(asa_recode5.OG) = recode_col_names
+  asa_recode5.filter = asa_recode5.OG %>% filter(Ingredient_subcode < 10000000)
+
+asa_recode6 = asa_recode6[c(9:11, 128:130)]
+  colnames(asa_recode6) = recode_col_names
+```
+
+```{r message = FALSE}
+#Merge iterations
+asa_recode_merge = full_join(asa_recode.filter, asa_recode2.filter)
+asa_recode_merge = full_join(asa_recode_merge, asa_recode3.filter)
+asa_recode_merge = full_join(asa_recode_merge, asa_recode4.filter)
+asa_recode_merge = full_join(asa_recode_merge, asa_recode5.filter)
+asa_recode_merge = full_join(asa_recode_merge, asa_recode6)
+ 
+# Remove duplicate Ingredient_subcode entries grouped by Ingredient_code
+asa_recode_merge = asa_recode_merge %>% group_by(Ingredient_code) %>% distinct(Ingredient_subcode, .keep_all = TRUE)
+
+# Write merged file
+write.csv(asa_recode_merge, "data/ingred_recode_remapped10202022.csv", row.names=FALSE)
+```
