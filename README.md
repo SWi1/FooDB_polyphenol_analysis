@@ -22,7 +22,7 @@ These scripts are for the project related to the identification and quantificati
     3)  Food.csv  
 
 -   **FooDB Polyphenols SDF**, on GitHub [page](https://github.com/SWi1/Polyphenol_Quantification_FooDB/blob/main/FooDB/FooDB2_polyphenols_ID.sdf)
-    1)   SDF files contain atom and bond information to visualize compounds. Chemical visualization software (authors used MarvinView) can read SDF files to view these polyphenol structures.
+    1)   SDF files contain atom and bond information to visualize compounds. Chemical visualization software (authors used MarvinView) can read SDF files to view these polyphenol structures. This file is provided by Dr. José Naveja.
 
 -   **Dietary Recall Data**, Downloadable as Items Analysis File from ASA24 Researcher Site
     -   The dietary data utilized in the USDA Phenotyping Study underwent quality control. Methods are outlined in the paper: [*'Effect of Manual Data Cleaning on Nutrient Intakes Using the Automated Self-Administered 24-Hour Dietary Assessment Tool (ASA24)'*](https://doi.org/10.1093/cdn/nzab005)  
