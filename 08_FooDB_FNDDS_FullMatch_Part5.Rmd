@@ -30,6 +30,7 @@ __Output__
 
 ```{r Load packages, include= FALSE, warning=FALSE, message=FALSE}
 library(tidyverse); library(readxl); library(stringdist)
+source('sim_score_function.R')
 ```
 
 
@@ -92,29 +93,6 @@ missing$searchterm = c('rice|milk', 'tea', 'chicken.*skin|skin.*chicken',
 
 
 ### 2) Match Ingredient Codes
-
-Load function for downstream filtering.
-```{r text similarity function}
-sim_score <- function(x, asa_descrip, foodb_descrip){
-  metric = x #where x is a list of text similarity metrics accepted by stringsim
-  asa_descrip = asa_descrip #df column of asa ingredient descriptions
-  foodb_descrip = foodb_descrip #df column of foodb ingredient descriptions
-  output = data.frame(matrix(ncol=length(metric), nrow=length(asa_descrip)))
-
-#run text similarity with each metric  
-for(i in seq_along(metric)){ 
-  output[[i]] = stringsim(asa_descrip, foodb_descrip, 
-                          method = metric[[i]], p = 0.1)
-}
-  
-  colnames(output) = metric # rename column names
-  output = output %>% add_column(asa_descrip, foodb_descrip) %>% # add columns
-    relocate(asa_descrip, foodb_descrip) # relocate descriptions to front
-  
-  return(output)
-}
-```
-
 
 Looping the grepl search through each search term and adding resulting output to a dataframe for macronutrient checking. **Requires**:
   - Food_V2: full set of FooDB descriptions
