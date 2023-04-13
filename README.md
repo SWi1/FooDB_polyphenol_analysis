@@ -11,6 +11,7 @@ These scripts are for the project related to the identification and quantificati
 -   Python 3.9.13
 
 ## Required Files
+Data that is publically available is available on this GitHub repository.
 
 - **FNDDS 2017-2018 Data**, Downloadable as xlsx files fom the [USDA ARS Beltsville Food Surveys Research Group](https://www.ars.usda.gov/northeast-area/beltsville-md-bhnrc/beltsville-human-nutrition-research-center/food-surveys-research-group/docs/fndds-download-databases/)
     1) '2017-2018 FNDDS At A Glance - Ingredient Nutrient Values.xlsx'
@@ -21,7 +22,7 @@ These scripts are for the project related to the identification and quantificati
     2)  Compound.csv (requires additional bzip2)
     3)  Food.csv  
 
--   **FooDB Polyphenols SDF**, Downloadable from GitHub [page](ADDLINK)
+-   **FooDB Polyphenols SDF**, Downloadable from GitHub [page](https://github.com/SWi1/Polyphenol_Quantification_FooDB/blob/main/FooDB/FooDB2_polyphenols_ID.sdf)
     1)   SDF files contain atom and bond information to visualize compounds. Chemical visualization software (authors used MarvinView) can read SDF files to view these polyphenol structures.
 
 -   **Dietary Recall Data**, Downloadable as Items Analysis File from ASA24 Researcher Site
