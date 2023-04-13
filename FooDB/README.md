@@ -1,4 +1,5 @@
-# About FooDB
+# README
+## About FooDB & Data Dictionary
 
 FooDB is promoted as the world's largest and most comprehensive food composition database. Within the downloadable files from FooDB version 1 (accessed September 2022), there are a reported 70,926 compounds and 992 foods. These compounds are derived from numerous databases and sources such as those listed below. n here shows the number of content entries from each database.
 
