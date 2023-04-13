@@ -11,7 +11,7 @@ These scripts are for the project related to the identification and quantificati
 -   Python 3.9.13
 
 ## Required Files
-Data that is publically available is available on this GitHub repository.
+Data that is publicly available is available on this GitHub repository.
 
 - **FNDDS 2017-2018 Data**, Downloadable as xlsx files fom the [USDA ARS Beltsville Food Surveys Research Group](https://www.ars.usda.gov/northeast-area/beltsville-md-bhnrc/beltsville-human-nutrition-research-center/food-surveys-research-group/docs/fndds-download-databases/)
     1) '2017-2018 FNDDS At A Glance - Ingredient Nutrient Values.xlsx'
