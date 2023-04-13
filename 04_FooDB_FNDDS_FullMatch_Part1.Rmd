@@ -28,8 +28,10 @@ __Output__
   - *missing_foodb_descrip.csv* - Just the ASA24 ingredient descriptions with no ingredient code match to FooDB
   
 
-```{r Load packages, include= FALSE, warning=FALSE, message=FALSE}
+```{r Load packages and functions, include= FALSE, warning=FALSE, message=FALSE}
 library(tidyverse); library(stringdist)
+
+source('sim_score_function.R')
 ```
 
 ```{r Load Data, include=FALSE}
@@ -67,27 +69,6 @@ duplicates = hits1 %>%
 
 ### 2a) Text Similarity Analysis
 
-Let us create a function to examine the similarity of two columns of two data with strings. We will use multiple text similarity metrics accepted by the _stringsim()_ function in the _stringdist_ package.
-
-```{r Create function to examine text similarity metrics}
-sim_score <- function(x, asa_descrip, foodb_descrip){
-  metric = x #where x is a list of text similarity metrics accepted by stringsim
-  asa_descrip = asa_descrip #df column of descriptions
-  foodb_descrip = foodb_descrip #df column of descriptions
-  output = data.frame(matrix(ncol=length(metric), nrow=length(asa_descrip)))
-  
-for(i in seq_along(metric)){ #run similarity for each metric
-  output[[i]] = stringsim(asa_descrip, foodb_descrip, 
-                          method = metric[[i]], p = 0.1)
-}
-  colnames(output) = metric # rename column names
-  output = output %>% add_column(asa_descrip, foodb_descrip) %>% # add columns
-    relocate(asa_descrip, foodb_descrip) # relocate descriptions to front
-  return(output)
-}
-```
-
-
 ```{r Run function to calculate multiple text similarity scores, warning = FALSE}
 scores_auto = sim_score(x = c("osa", "lv", "dl", "hamming", "lcs", 
                               "qgram", "cosine", "jaccard", "jw", "soundex"), 
@@ -106,11 +87,11 @@ scores_auto = scores_auto %>%
                            c(osa, lv, dl, hamming, lcs, qgram, cosine, jaccard, 
                              jw, soundex)))) %>%
   select(-c(asa_descrip, foodb_descrip))
-```
 
-
-```{r Merge Dataframes}
+#Merge Dataframes
 duplicates = cbind(duplicates, scores_auto) 
+
+#duplicates File was exported here for manual scoring.
 ```
 
 
@@ -152,7 +133,3 @@ missing = asa %>%
 ```
 
 We will match the remaining 170 codes in Part II of the matching script and export what we have for now.
-
-
-
-
