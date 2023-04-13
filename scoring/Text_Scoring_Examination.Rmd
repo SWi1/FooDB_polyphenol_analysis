@@ -1,0 +1,111 @@
+---
+title: "Scoring Examination"
+author: "Stephanie Wilson"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+#  Examining Text Scoring Classifications
+
+__Required Input Files__  
+  - *04_scores_auto_manualcheck.csv* - output from 04_FooDB_FNDDS_FullMatch_Part1.Rmd, following the manual addition of a new column of correct/incorrect classifiations.
+  - *Manual_Match100.csv* - output from 03_FooDB_ManualMatch100.Rmd
+  
+  
+### 1) Examination of scoring from duplicate IDs during code matching
+
+In theory, the asa should have near identical text matches with shared original source IDs (which are maintained in FooDB). This section checks how scoring metrics perform with almost perfect matches. 
+
+```{r}
+#Load file where correct classifications were added in manually
+# Classification, 1 = correct, 0 = incorrect
+manualcheck = read.csv('04_scores_auto_manualcheck.csv') %>%
+  mutate(manualcheck, mean_score = 
+           rowMeans(select(manualcheck, c(osa, lv, dl, hamming, lcs, 
+                                          qgram, cosine, jaccard, jw, soundex)))) %>%
+  relocate(mean_score, .before = Classification)
+
+# Across metrics, assign correct or incorrect for each score based off a 0.5 score threshold
+scores = manualcheck %>%
+  select(osa:mean_score) %>%
+  mutate(across(where(is.numeric), ~ cut(.x, breaks=c(-.01, 0.5, 1.0), 
+                                         labels = c('Incorrect', 'Correct')))) %>%
+  mutate(asa_descrip = manualcheck$asa_descrip,
+         foodb_descrip = manualcheck$foodb_descrip,
+         Ingredient_code = manualcheck$Ingredient_code,
+         Classification =manualcheck$Classification) 
+```
+
+ENSURE VALUES IN MEAN SCORES MATCH CLASSIFICATION 
+```{r}
+# How many correct classifications are we looking for?
+table(manualcheck$Classification) # only 54 correct classifications
+summary(scores[1:11])
+
+#filter in Correct classifications for comparison
+correct = manualcheck %>%
+  filter(Classification==1)
+```
+soundex and mean_score have 54 correct hits. lcs is fairing well at just one shy of 54 correct classifications. qgram, cosine, jaccard, and jw are getting false positives while osa, lv, dl, and hamming are getting false negatives.
+
+But are the soundex, mean_score, and lcs 'corrects' actually matching the true correct classifications?
+```{r}
+#Soundex Examination
+#Mean Score Examination
+
+table(ifelse(correct$soundex ==correct$Classification, 'Matched', 'Mismatched'))
+#scoring is 100%
+
+table(ifelse(correct$mean_score ==correct$Classification, 'Matched', 'Mismatched'))
+#scoring is 91%
+
+table(ifelse(correct$lcs ==correct$Classification, 'Matched', 'Mismatched'))
+#scoring is 91%
+```
+
+Soundex matches better than mean score, but how does it compare when looking for ingredients that may have descriptions more slightly off than our duplicated codes?
+
+
+### 2) Reassessment with Manual codes
+Unlike the section above, this section examines how the scoring metrics work when the ingredient descriptions should not be as similar (no original source IDs shared).
+
+Load correct classifications from script 3. 
+```{r Load Data, include=FALSE}
+Correct100 = read.csv('Manual_Match100.csv')
+```
+
+```{r}
+assess100 = sim_score(x = c("osa", "lv", "dl", "hamming", "lcs", 
+                              "qgram", "cosine", "jaccard", "jw", "soundex"),
+                      asa_descrip = Correct100$Ingredient_description, 
+                      foodb_descrip = Correct100$orig_food_common_name)
+
+# Add in Mean score
+assess100 = assess100 %>%
+  mutate(assess100, mean_score = 
+           rowMeans(select(assess100, c(osa, lv, dl, hamming, lcs, 
+                                          qgram, cosine, jaccard, jw, soundex)))) %>%
+  mutate(Classification = 'Correct')
+```
+
+
+```{r}
+# Across metrics, assign correct or incorrect for each score based off a 0.5 score threshold
+scores100 = assess100 %>%
+  select(osa:mean_score) %>%
+  mutate(across(where(is.numeric), ~ cut(.x, breaks=c(-0.01, 0.5, 1.0), 
+                                         labels = c('Incorrect', 'Correct')))) 
+```
+
+ENSURE VALUES IN MEAN SCORES MATCH CLASSIFICATION 
+We're looking for 100 correct classifications
+
+```{r}
+summary(scores100[1:11])
+```
+We now see other measures (cosine, jaccard, jw) are scoring better now that ingredient descriptions aren't approximately identical. This indicates that cosine, jaccard, and jw may work well between two datasets that don't have exact text matches. Soundex had 8 misclassifications and mean score had five. 
+
+Mean score performs well with near identical descriptions (indicated in section 1) and performance is 95% correct with less identical descriptions in section 2.  Mean scores present a conservative but high performing metric to select from a list of text descriptions with varied levels of similarity.
+
+
+
