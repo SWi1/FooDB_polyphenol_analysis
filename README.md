@@ -21,8 +21,8 @@ These scripts are for the project related to the identification and quantificati
     2)  Compound.csv (requires additional bzip2)
     3)  Food.csv  
 
--   **FooDB Polyphenols SDF**, on GitHub [page](https://github.com/SWi1/Polyphenol_Quantification_FooDB/blob/main/FooDB/FooDB2_polyphenols_ID.sdf)
-    1)   SDF files contain atom and bond information to visualize compounds. Chemical visualization software (authors used MarvinView) can read SDF files to view these polyphenol structures. This file is provided by Dr. José Naveja.
+-   **FooDB Polyphenols SDF**, Downloadable from GitHub [page](ADDLINK)
+    1)   SDF files contain atom and bond information to visualize compounds. Chemical visualization software (authors used MarvinView) can read SDF files to view these polyphenol structures.
 
 -   **Dietary Recall Data**, Downloadable as Items Analysis File from ASA24 Researcher Site
     -   The dietary data utilized in the USDA Phenotyping Study underwent quality control. Methods are outlined in the paper: [*'Effect of Manual Data Cleaning on Nutrient Intakes Using the Automated Self-Administered 24-Hour Dietary Assessment Tool (ASA24)'*](https://doi.org/10.1093/cdn/nzab005)  
@@ -31,7 +31,7 @@ These scripts are for the project related to the identification and quantificati
 
 Scripts in each set are intended to be run sequentially.
 
-1)  Ingredientize
+1)  Ingredientize - Adapted to R from Python Scripts created by Jules Larke.
     -   01_ingredientize_unmatchedfoods_asa24_fndds.Rmd.
     -   02_ingredientize_mixedfoods.Rmd
     -   03_ingredientize_code_remap.Rmd
@@ -50,7 +50,7 @@ Scripts in each set are intended to be run sequentially.
 3)  Polyphenol Quantification
     -   Q1_Polyphenol_Quantification_PhenolID.Rmd
     -   Q2_Polyphenol_Quantification_Content.Rmd
-    -   Q3_Polyphenol_Quantification_ASAmerge.Rmd  
+    -   Q3_Polyphenol_Quantification_ASAmerge.Rmd
   
 
 ## Outputs
