@@ -1,0 +1,240 @@
+---
+title: "Q4_Polyphenol_Quantification_Content"
+author: "Stephanie Wilson"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Polyphenol Quantification
+## Step 4: Aggregation of Polyphenol Content
+
+__Required Input Files__  
+  - *FooDB_phenol_premerge.csv.bz2* - Output from Q2_Polyphenol_Quantification_Content.Rmd
+  - *Food_updated.csv* - 01_FooDB_FooDBCleaning.ipynb
+  - *FooDB_PE_RF.csv* - contains FooDB/Phenol Explorer matches with retention factor data. Also includes those foods that did not match. Output from Q3_Polyphenol_Quantification.
+
+__Information__  
+This script prepares the Content file with cleaned text descriptions and merges this information with our phenol list. Polyphenols are aggregated at the food level (not orig_food_common_name) to match what is shown on FooDB. The output is ready to be matched with dietary recall data.
+
+  1) Replace Content_updated food descriptions with cleaned text descriptions
+  2) Add endogenous compounds back into Content_updated
+  3) Merge phenol compound data with Content_updated with cleaned food descriptions
+     - Important Note: Content file needs to be filtered for source_type=='Compounds'
+  4) Unit Check    
+  5) Polyphenol Totals and Updating the Content File
+
+
+__Outputs__  
+  - *FooDB_phenols_Content.csv.bz2* - Phenols pulled out of Compounds.csv and matched to FooDB's Compounds file with cleaned text descriptions.
+  - *FooDB_phenol_content_foodsums.csv* - Summed polyphenol intake per unique food id in FooDB. Specific foods not present in FooDB or present but not quantified have had their concentrations adjusted. 
+  
+```{r Load packages, message=FALSE}
+library(tidyverse)
+```
+
+
+```{r Load data}
+#FooDB_phenol_content = read.csv('FooDB/FooDB_phenol_premerge.csv.bz2')
+FooDB_phenol_content = read.csv('FooDB/FooDB_phenol_premerge.csv.bz2')
+
+#Retention Factor Data
+RF = read.csv('FooDB/FooDB_PE_RF.csv') %>%
+  mutate(orig_food_id = as.character(orig_food_id),
+         orig_source_id = as.character(orig_source_id))
+
+Food = read.csv('FooDB/Food_updated.csv') %>%
+  select(c(id, public_id, name)) %>%
+  rename('food_id' = 'id',
+         'food_public_id' = 'public_id',
+         'food_name' = 'name')
+```
+
+
+```{r}
+message('Number of unique foods in FooDB content (unaggregated): ',
+  length(unique(FooDB_phenol_content$food_id)),
+  
+  '\nNumber of unique compounds in FooDB content (unaggregated): ',
+  length(unique(FooDB_phenol_content$compound_id)),
+  
+  '\nNumber of unique foods in FooDB content (quantified, unaggregated): ',
+  nrow(FooDB_phenol_content %>% dplyr::filter(!is.na(orig_content)) %>% select(food_id) %>% distinct()),
+  
+  '\nNumber of unique compounds in FooDB content (quantified, unaggregated): ',
+  nrow(FooDB_phenol_content %>% dplyr::filter(!is.na(orig_content)) %>% select(compound_id) %>% distinct()))
+```
+
+
+### 1) Data Preparation
+
+**Aggregation for the FooDB polyphenol content**.   
+  1) We will update orig_unit to reflect the unit presented in orig_content.
+  2) Create average original content column to replicate values observed on [FooDB.ca](www.foodb.ca). 
+  - *Note* - This action also moves up from the ingredient level to a broader food classification.
+  - *Note* - This action removes individual entries that went into the average.
+
+```{r}
+#Merge with unit file
+FooDB_phenol_content_updated = FooDB_phenol_content %>%
+  dplyr::filter(!citation == 'PHENOL EXPLORER') %>% #remove Phenol Explorer Entries
+  dplyr::full_join(RF) %>% #Add in our Phenol Explorer Entries that have been matched
+  dplyr::mutate(orig_unit_updated = 'mg/100g') %>% 
+  dplyr::group_by(compound_public_id, food_id) %>%
+  dplyr::mutate(orig_content_avg = mean(orig_content, na.rm = TRUE)) %>% #Average
+  dplyr::ungroup() %>% #NEW
+  dplyr::relocate(orig_content_avg, .before = orig_unit) %>% 
+  dplyr::relocate(food_public_id, .before = food_name) %>%
+  dplyr::relocate(food_V2_ID, .before = orig_food_common_name) %>%
+  dplyr::arrange(food_id, compound_id)%>%
+  dplyr::distinct(food_id, compound_id, .keep_all = TRUE) %>% #Removes ind. entries
+  dplyr::select(-c(orig_food_id, orig_food_part, orig_content, orig_min,
+                   orig_max, standard_content, export)) %>%
+  dplyr::mutate(orig_content_avg_RFadj = ifelse(is.na(aggregate_RF),
+                                                orig_content_avg,
+                                       orig_content_avg*aggregate_RF)) %>%
+  dplyr::relocate(aggregate_RF, orig_content_avg_RFadj, .after =  orig_content_avg)
+```
+
+
+```{r}
+#Export Compound & Content Information
+write.csv(FooDB_phenol_content_updated, 'FooDB/FooDB_phenol_content.csv.bz2', 
+          row.names = FALSE)
+```
+
+### 2) Review
+How many have quantified content values?
+```{r}
+message('Number of unique foods in FooDB content (aggregated): ',
+  length(unique(FooDB_phenol_content_updated$food_id)),
+  
+  '\nNumber of unique compounds in FooDB content (aggregated): ',
+  length(unique(FooDB_phenol_content_updated$compound_id)),
+  
+  '\nNumber of unique foods in FooDB content (quantified, aggregated): ',
+  nrow(FooDB_phenol_content_updated %>% dplyr::filter(!is.na(orig_content_avg)) %>% select(food_id) %>% distinct()),
+  
+  '\nNumber of unique compounds in FooDB content (quantified, aggregated): ',
+  nrow(FooDB_phenol_content_updated %>% dplyr::filter(!is.na(orig_content_avg)) %>% select(compound_id) %>% distinct()))
+```
+
+Great. This should match the numbers before aggregation as file was aggregated according to food_id and compound_id.
+
+How many have quantified retention factors?
+```{r}
+message('Number of unique foods in FooDB content (aggregated): ',
+  length(unique(FooDB_phenol_content_updated$food_id)),
+  
+  '\nNumber of unique compounds in FooDB content (aggregated): ',
+  length(unique(FooDB_phenol_content_updated$compound_id)),
+  
+  '\nNumber of unique foods in FooDB content (with RF, aggregated): ',
+  nrow(FooDB_phenol_content_updated %>% dplyr::filter(!is.na(aggregate_RF)) %>%
+         select(food_id) %>% distinct()),
+  
+  '\nNumber of unique compounds in FooDB content (with RF, aggregated): ',
+  nrow(FooDB_phenol_content_updated %>% dplyr::filter(!is.na(aggregate_RF)) %>%
+         select(compound_id) %>% distinct()))
+```
+
+```{r}
+#How many entries are quantified?
+quantified = FooDB_phenol_content_updated %>%
+  dplyr::filter(!is.nan(orig_content_avg))
+
+# How many of the quantified entries have 
+table(is.na(quantified$aggregate_RF))
+
+564/nrow(quantified)*100
+```
+
+### 3) Polyphenol Totals and Updating the Content File
+
+Create dataframe with polyphenol totals for each food_id within FooDB. *Total_pp* and *Total_pp_adj* units are mg/100g
+```{r}
+Food_Sums = FooDB_phenol_content_updated %>%
+  drop_na(food_id) %>%
+  dplyr::group_by(food_id) %>%
+  dplyr::mutate(total_pp = sum(orig_content_avg, na.rm = TRUE),
+         total_pp_RFadj = sum(orig_content_avg_RFadj, na.rm = TRUE)) %>%
+  dplyr::distinct(food_id, .keep_all = TRUE) %>%
+  dplyr::select(c(food_id, food_public_id, food_name, total_pp, total_pp_RFadj)) %>%
+  dplyr::arrange(desc(total_pp))
+
+#Stray Entry originating from Content file that needs updated
+num899 = Food_Sums %>% filter(food_id == 899) %>%
+  mutate(food_name = 'meats')
+```
+
+
+Quantified, Unquantified, Predicted Column Creation
+```{r}
+Food_Sums_Full_List = Food_Sums %>%
+  dplyr::ungroup() %>%
+  dplyr::filter(!food_id ==899) %>%
+  dplyr::add_row(num899) 
+
+Food_insert = Food %>%
+  dplyr::anti_join(Food_Sums_Full_List, by = 'food_id')
+
+Food_Sums_Full_List = Food_Sums_Full_List %>%
+  dplyr::full_join(Food_insert) %>%
+  dplyr::mutate(Status = case_when(
+    total_pp > 0 ~ 'Quantified',
+    total_pp == 0 ~ 'Unquantified but Predicted or Expected')) %>%
+  dplyr::mutate(Status = coalesce(Status, 'Polyphenols Absent in FooDB')) #replace NAs
+```
+
+
+Identify meat and seafood foods from 'Unquantified but Predicted or Expected'. Zero them and reclassify them as quantified. 
+```{r}
+#Identify meat and seafoods 
+meat_seafood = data.frame(food_id = c(334, 505, 549, 399, 293, 483, 541, 
+                                       535, 590, 358, 373, 280, 303, 310,
+                                       316, 319, 317, 354, 364, 365, 378,
+                                       383, 430, 435, 438, 451, 491, 540, 
+                                       542, 555, 554, 595, 611, 624, 625),
+                           total_pp_adj = 0,
+                           Status_adj = 'Quantified') %>%
+  dplyr::left_join(Food_Sums_Full_List, by = 'food_id') %>%
+  dplyr::relocate(total_pp_adj, Status_adj, .after = Status)
+```
+
+
+Reclassify 'Polyphenols Absent in FooDB' as zeros.  
+Reclassify 'Unquantified but Predicted or Expected' as NAs, except for the meat and seafood foods which have already been re-quantified as zeros.  
+  - per Danielle's recommendation, email 2/10/23
+```{r}
+#These foods have no linked polyphenols in FooDB
+Absent_adjusted = Food_Sums_Full_List %>% 
+  dplyr::filter(Status == 'Polyphenols Absent in FooDB') %>%
+  dplyr::mutate(total_pp_adj = 0,
+                total_pp_RFadj = 0,
+         Status_adj = 'Quantified')
+
+# These foods do have linked polyphenols in FooDB but there's no available concentration
+Unquantified_Adjusted = Food_Sums_Full_List %>% 
+  dplyr::filter(Status == 'Unquantified but Predicted or Expected') %>%
+  dplyr::filter(!food_id %in% meat_seafood$food_id) %>%
+  dplyr::mutate(total_pp_adj = 'NA',
+                total_pp_RFadj = 'NA',
+                Status_adj = 'Unquantified but Predicted or Expected') %>%
+  dplyr::mutate(total_pp_adj = as.numeric('NA'),
+                total_pp_RFadj = as.numeric('NA'))
+```
+
+Merge edits and Export.
+```{r}
+Food_Sums_Full_List_final = Food_Sums_Full_List %>%
+  filter(Status == 'Quantified') %>%
+  mutate(total_pp_adj = total_pp,
+         Status_adj = 'Quantified') %>%
+  full_join(meat_seafood) %>%
+  full_join(Absent_adjusted) %>%
+  full_join(Unquantified_Adjusted) 
+
+write.csv(Food_Sums_Full_List_final, 'FooDB/FooDB_phenol_content_foodsums.csv',
+          row.names = FALSE)
+```
+
+
