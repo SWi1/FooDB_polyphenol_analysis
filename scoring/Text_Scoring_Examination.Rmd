@@ -8,9 +8,14 @@ output: html_document
 #  Examining Text Scoring Classifications
 
 __Required Input Files__  
-  - *04_scores_auto_manualcheck.csv* - output from 04_FooDB_FNDDS_FullMatch_Part1.Rmd, following the manual addition of a new column of correct/incorrect classifiations.
+  - *04_scores_auto_manualcheck.csv* - output from 04_FooDB_FNDDS_FullMatch_Part1.Rmd, following the manual addition of a new column of correct/incorrect classifications.
   - *Manual_Match100.csv* - output from 03_FooDB_ManualMatch100.Rmd
   
+```{r}
+library(tidyverse); library(stringdist)
+
+source('sim_score_function.R')
+```
   
 ### 1) Examination of scoring from duplicate IDs during code matching
 
@@ -19,8 +24,9 @@ In theory, the asa should have near identical text matches with shared original 
 ```{r}
 #Load file where correct classifications were added in manually
 # Classification, 1 = correct, 0 = incorrect
-manualcheck = read.csv('04_scores_auto_manualcheck.csv') %>%
-  mutate(manualcheck, mean_score = 
+manualcheck = read.csv('04_scores_auto_manualcheck.csv') 
+
+manualcheck = mutate(manualcheck, mean_score = 
            rowMeans(select(manualcheck, c(osa, lv, dl, hamming, lcs, 
                                           qgram, cosine, jaccard, jw, soundex)))) %>%
   relocate(mean_score, .before = Classification)
