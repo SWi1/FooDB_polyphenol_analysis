@@ -42,7 +42,7 @@ library(tidyverse)
 
 ```{r Load Data}
 # Load SDF dataset provided by Authors
-SDF = read_sdf('data/FooDB2_polyphenols_ID.sdf')
+SDF = read_sdf('FooDB/FooDB2_polyphenols_ID.sdf')
 
 # Load FooDB data, accessed September 2022
 # Use Content.csv to assess all possible matches
