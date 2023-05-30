@@ -1,0 +1,168 @@
+,Food_Category,Food_Subcategory,WWEIA Category number,WWEIA Category description,Form
+1,Milk and Dairy,Milk,1002,"Milk, whole",Liquid
+2,Milk and Dairy,Milk,1004,"Milk, reduced fat",Liquid
+3,Milk and Dairy,Milk,1006,"Milk, lowfat",Liquid
+4,Milk and Dairy,Milk,1008,"Milk, nonfat",Liquid
+5,Milk and Dairy,Flavored Milk,1202,"Flavored milk, whole",Liquid
+6,Milk and Dairy,Flavored Milk,1204,"Flavored milk, reduced fat",Liquid
+7,Milk and Dairy,Flavored Milk,1206,"Flavored milk, lowfat",Liquid
+8,Milk and Dairy,Flavored Milk,1208,"Flavored milk, nonfat",Liquid
+9,Milk and Dairy,Dairy Drinks and Substitutes,1402,Milk shakes and other dairy drinks,Liquid
+10,Milk and Dairy,Dairy Drinks and Substitutes,1404,Milk substitutes,Liquid
+11,Milk and Dairy,Cheese,1602,Cheese,Solid
+12,Milk and Dairy,Cheese,1604,Cottage/ricotta cheese,Semi-Solid
+13,Milk and Dairy,Yogurt,1820,"Yogurt, regular",Semi-Solid
+14,Milk and Dairy,Yogurt,1822,"Yogurt, Greek",Semi-Solid
+15,Protein Foods,Meats,2002,"Beef, excludes ground",Solid
+16,Protein Foods,Meats,2004,Ground beef,Solid
+17,Protein Foods,Meats,2006,Pork,Solid
+18,Protein Foods,Meats,2008,"Lamb, goat, game",Solid
+19,Protein Foods,Meats,2010,Liver and organ meats,Solid
+20,Protein Foods,Poultry,2202,"Chicken, whole pieces",Solid
+21,Protein Foods,Poultry,2204,"Chicken patties, nuggets and tenders",Solid
+22,Protein Foods,Poultry,2206,"Turkey, duck, other poultry",Solid
+23,Protein Foods,Seafood,2402,Fish,Solid
+24,Protein Foods,Seafood,2404,Shellfish,Solid
+25,Protein Foods,Eggs,2502,Eggs and omelets,Solid
+26,Protein Foods,Cured Meats/Poultry,2602,Cold cuts and cured meats,Solid
+27,Protein Foods,Cured Meats/Poultry,2604,Bacon,Solid
+28,Protein Foods,Cured Meats/Poultry,2606,Frankfurters,Solid
+29,Protein Foods,Cured Meats/Poultry,2608,Sausages,Solid
+30,Protein Foods,Plant-based Protein Foods,2802,"Beans, peas, legumes",Solid
+31,Protein Foods,Plant-based Protein Foods,2804,Nuts and seeds,Solid
+32,Protein Foods,Plant-based Protein Foods,2806,Processed soy products,Solid
+33,Mixed Dishes,"Mixed Dishes - Meat, Poutry, Seafood",3002,Meat mixed dishes,
+34,Mixed Dishes,"Mixed Dishes - Meat, Poutry, Seafood",3004,Poultry mixed dishes,
+35,Mixed Dishes,"Mixed Dishes - Meat, Poutry, Seafood",3006,Seafood mixed dishes,
+36,Mixed Dishes,Mixed Dishes - Bean/Vegetable-based,3102,"Bean, pea, legume dishes",
+37,Mixed Dishes,Mixed Dishes - Bean/Vegetable-based,3104,Vegetable dishes,
+38,Mixed Dishes,Mixed Dishes - Grain-based,3202,Rice mixed dishes,Solid
+39,Mixed Dishes,Mixed Dishes - Grain-based,3204,"Pasta mixed dishes, excludes macaroni and cheese",Solid
+40,Mixed Dishes,Mixed Dishes - Grain-based,3206,Macaroni and cheese,Solid
+41,Mixed Dishes,Mixed Dishes - Grain-based,3208,Turnovers and other grain-based items,Solid
+42,Mixed Dishes,Mixed Dishes - Asian,3402,Fried rice and lo/chow mein,Solid
+43,Mixed Dishes,Mixed Dishes - Asian,3404,Stir-fry and soy-based sauce mixtures,Solid
+44,Mixed Dishes,Mixed Dishes - Asian,3406,"Egg rolls, dumplings, sushi",Solid
+45,Mixed Dishes,Mixed Dishes - Mexican,3502,Burritos and tacos,Solid
+46,Mixed Dishes,Mixed Dishes - Mexican,3504,Nachos,Solid
+47,Mixed Dishes,Mixed Dishes - Mexican,3506,Other Mexican mixed dishes,Solid
+48,Mixed Dishes,Mixed Dishes - Pizza,3602,Pizza,Solid
+49,Mixed Dishes,Mixed Dishes - Sandwiches (single code),3702,Burgers (single code),Solid
+50,Mixed Dishes,Mixed Dishes - Sandwiches (single code),3703,Frankfurter sandwiches (single code),Solid
+51,Mixed Dishes,Mixed Dishes - Sandwiches (single code),3704,Chicken/turkey sandwiches (single code),Solid
+52,Mixed Dishes,Mixed Dishes - Sandwiches (single code),3706,Egg/breakfast sandwiches (single code),Solid
+53,Mixed Dishes,Mixed Dishes - Sandwiches (single code),3708,Other sandwiches (single code),Solid
+54,Mixed Dishes,Mixed Dishes - Sandwiches (single code),3720,Cheese sandwiches (single code),Solid
+55,Mixed Dishes,Mixed Dishes - Sandwiches (single code),3722,Peanut butter and jelly sandwiches (single code),Solid
+56,Mixed Dishes,Mixed Dishes - Sandwiches (single code),3730,Seafood sandwiches (single code),Solid
+57,Mixed Dishes,Mixed Dishes - Soups,3802,Soups,
+58,Grains,Cooked Grains,4002,Rice,Solid
+59,Grains,Cooked Grains,4004,"Pasta, noodles, cooked grains",Solid
+60,Grains,"Breads, Rolls, Toritllas",4202,Yeast breads,Solid
+61,Grains,"Breads, Rolls, Toritllas",4204,Rolls and buns,Solid
+62,Grains,"Breads, Rolls, Toritllas",4206,Bagels and English muffins,Solid
+63,Grains,"Breads, Rolls, Toritllas",4208,Tortillas,Solid
+64,Grains,Quick Breads and Bread Products,4402,"Biscuits, muffins, quick breads",Solid
+65,Grains,Quick Breads and Bread Products,4404,"Pancakes, waffles, French toast",Solid
+66,Grains,Ready-to-Eat Cereals,4602,"Ready-to-eat cereal, higher sugar (>21.2g/100g)",Solid
+67,Grains,Ready-to-Eat Cereals,4604,"Ready-to-eat cereal, lower sugar (=<21.2g/100g)",Solid
+68,Grains,Cooked Cereals,4802,Oatmeal,Semi-Solid
+69,Grains,Cooked Cereals,4804,Grits and other cooked cereals,Semi-Solid
+70,Snacks and Sweets,Savory Snacks,5002,Potato chips,Solid
+71,Snacks and Sweets,Savory Snacks,5004,"Tortilla, corn, other chips",Solid
+72,Snacks and Sweets,Savory Snacks,5006,Popcorn,Solid
+73,Snacks and Sweets,Savory Snacks,5008,Pretzels/snack mix,Solid
+74,Snacks and Sweets,Crackers,5202,"Crackers, excludes saltines",Solid
+75,Snacks and Sweets,Crackers,5204,Saltine crackers,Solid
+76,Snacks and Sweets,Snack/Meal Bars,5402,Cereal bars,Solid
+77,Snacks and Sweets,Snack/Meal Bars,5404,Nutrition bars,Solid
+78,Snacks and Sweets,Sweet Bakery Products,5502,Cakes and pies,Solid
+79,Snacks and Sweets,Sweet Bakery Products,5504,Cookies and brownies,Solid
+80,Snacks and Sweets,Sweet Bakery Products,5506,"Doughnuts, sweet rolls, pastries",Solid
+81,Snacks and Sweets,Candy,5702,Candy containing chocolate,Solid
+82,Snacks and Sweets,Candy,5704,Candy not containing chocolate,Solid
+83,Snacks and Sweets,Other Desserts,5802,Ice cream and frozen dairy desserts,Semi-Solid
+84,Snacks and Sweets,Other Desserts,5804,Pudding,Semi-Solid
+85,Snacks and Sweets,Other Desserts,5806,"Gelatins, ices, sorbets",Semi-Solid
+86,Fruit,Fruits,6002,Apples,Solid
+87,Fruit,Fruits,6004,Bananas,Solid
+88,Fruit,Fruits,6006,Grapes,Solid
+89,Fruit,Fruits,6008,Peaches and nectarines,Solid
+90,Fruit,Fruits,6009,Strawberries,Solid
+91,Fruit,Fruits,6011,Blueberries and other berries,Solid
+92,Fruit,Fruits,6012,Citrus fruits,Solid
+93,Fruit,Fruits,6014,Melons,Solid
+94,Fruit,Fruits,6016,Dried fruits,Solid
+95,Fruit,Fruits,6018,Other fruits and fruit salads,Solid
+96,Fruit,Fruits,6020,Pears,Solid
+97,Fruit,Fruits,6022,Pineapple,Solid
+98,Fruit,Fruits,6024,Mango and papaya,Solid
+99,Vegetables,"Vegetables, excluding Potatoes",6402,Tomatoes,Solid
+100,Vegetables,"Vegetables, excluding Potatoes",6404,Carrots,Solid
+101,Vegetables,"Vegetables, excluding Potatoes",6406,Other red and orange vegetables,Solid
+102,Vegetables,"Vegetables, excluding Potatoes",6407,Broccoli,Solid
+103,Vegetables,"Vegetables, excluding Potatoes",6409,Spinach,Solid
+104,Vegetables,"Vegetables, excluding Potatoes",6410,Lettuce and lettuce salads,Solid
+105,Vegetables,"Vegetables, excluding Potatoes",6411,Other dark green vegetables,Solid
+106,Vegetables,"Vegetables, excluding Potatoes",6412,String beans,Solid
+107,Vegetables,"Vegetables, excluding Potatoes",6413,Cabbage,Solid
+108,Vegetables,"Vegetables, excluding Potatoes",6414,Onions,Solid
+109,Vegetables,"Vegetables, excluding Potatoes",6416,Corn,Solid
+110,Vegetables,"Vegetables, excluding Potatoes",6418,Other starchy vegetables,Solid
+111,Vegetables,"Vegetables, excluding Potatoes",6420,Other vegetables and combinations,Solid
+112,Vegetables,"Vegetables, excluding Potatoes",6430,Fried vegetables,Solid
+113,Vegetables,"Vegetables, excluding Potatoes",6432,"Coleslaw, non-lettuce salads",Solid
+114,Vegetables,"Vegetables, excluding Potatoes",6489,Vegetables on a sandwich,Solid
+115,Vegetables,White Potatoes,6802,"White potatoes, baked or boiled",Solid
+116,Vegetables,White Potatoes,6804,French fries and other fried white potatoes,Solid
+117,Vegetables,White Potatoes,6806,Mashed potatoes and white potato mixtures,Solid
+118,Beverages,100% Juice,7002,Citrus juice,Liquid
+119,Beverages,100% Juice,7004,Apple juice,Liquid
+120,Beverages,100% Juice,7006,Other fruit juice,Liquid
+121,Beverages,100% Juice,7008,Vegetable juice,Liquid
+122,Beverages,Diet Beverages,7102,Diet soft drinks,Liquid
+123,Beverages,Diet Beverages,7104,Diet sport and energy drinks,Liquid
+124,Beverages,Diet Beverages,7106,Other diet drinks,Liquid
+125,Beverages,Sweetened Beverages,7202,Soft drinks,Liquid
+126,Beverages,Sweetened Beverages,7204,Fruit drinks,Liquid
+127,Beverages,Sweetened Beverages,7206,Sport and energy drinks,Liquid
+128,Beverages,Sweetened Beverages,7208,Nutritional beverages,Liquid
+129,Beverages,Sweetened Beverages,7220,Smoothies and grain drinks,Liquid
+130,Beverages,Coffee and Tea,7302,Coffee,Liquid
+131,Beverages,Coffee and Tea,7304,Tea,Liquid
+132,Alcoholic Beverages,Alcoholic Beverages,7502,Beer,Liquid
+133,Alcoholic Beverages,Alcoholic Beverages,7504,Wine,Liquid
+134,Alcoholic Beverages,Alcoholic Beverages,7506,Liquor and cocktails,Liquid
+135,Water,Plain Water,7702,Tap water,Liquid
+136,Water,Plain Water,7704,Bottled water,Liquid
+137,Water,Flavored or Enhanced Water,7802,Flavored or carbonated water,Liquid
+138,Water,Flavored or Enhanced Water,7804,Enhanced or fortified water,Liquid
+139,Fats and Oils,Fats and Oils,8002,Butter and animal fats,Semi-Solid
+140,Fats and Oils,Fats and Oils,8004,Margarine,Semi-Solid
+141,Fats and Oils,Fats and Oils,8006,"Cream cheese, sour cream, whipped cream",Semi-Solid
+142,Fats and Oils,Fats and Oils,8008,Cream and cream substitutes,Liquid
+143,Fats and Oils,Fats and Oils,8010,Mayonnaise,Semi-Solid
+144,Fats and Oils,Fats and Oils,8012,Salad dressings and vegetable oils,
+145,Condiments and Sauces,Condiments and Sauces,8402,Tomato-based condiments,Semi-Solid
+146,Condiments and Sauces,Condiments and Sauces,8404,Soy-based condiments,Liquid
+147,Condiments and Sauces,Condiments and Sauces,8406,Mustard and other condiments,Semi-Solid
+148,Condiments and Sauces,Condiments and Sauces,8408,"Olives, pickles, pickled vegetables",Solid
+149,Condiments and Sauces,Condiments and Sauces,8410,"Pasta sauces, tomato-based",Semi-Solid
+150,Condiments and Sauces,Condiments and Sauces,8412,"Dips, gravies, other sauces",Semi-Solid
+151,Sugars,Sugars,8802,Sugars and honey,
+152,Sugars,Sugars,8804,Sugar substitutes,Solid
+153,Sugars,Sugars,8806,"Jams, syrups, toppings",Semi-Solid
+154,Baby Foods and Formulas,Baby Foods,9002,Baby food: cereals,Semi-Solid
+155,Baby Foods and Formulas,Baby Foods,9004,Baby food: fruit,Semi-Solid
+156,Baby Foods and Formulas,Baby Foods,9006,Baby food: vegetable,Semi-Solid
+157,Baby Foods and Formulas,Baby Foods,9008,Baby food: meat and dinners,Semi-Solid
+158,Baby Foods and Formulas,Baby Foods,9010,Baby food: yogurt,Semi-Solid
+159,Baby Foods and Formulas,Baby Foods,9012,Baby food: snacks and sweets,Semi-Solid
+160,Baby Foods and Formulas,Baby Beverages,9202,Baby juice,Liquid
+161,Baby Foods and Formulas,Baby Beverages,9204,Baby water,Liquid
+162,Baby Foods and Formulas,Infant Formulas,9402,"Formula, ready-to-feed",Liquid
+163,Baby Foods and Formulas,Infant Formulas,9404,"Formula, prepared from powder",Liquid
+164,Baby Foods and Formulas,Infant Formulas,9406,"Formula, prepared from concentrate",Liquid
+165,Baby Foods and Formulas,Human Milk,9602,Human milk,Liquid
+166,Other,Other,9802,Protein and nutritional powders,Semi-Solid
+167,Other,Other,9999,Not included in a food category,
