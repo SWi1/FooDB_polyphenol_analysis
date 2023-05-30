@@ -19,15 +19,19 @@ Data that is publicly available is available on this GitHub repository.
 -   **FNDDS 2017-2018 Data**, Downloadable as xlsx files fom the [USDA ARS Beltsville Food Surveys Research Group](https://www.ars.usda.gov/northeast-area/beltsville-md-bhnrc/beltsville-human-nutrition-research-center/food-surveys-research-group/docs/fndds-download-databases/). What We Eat in America (WWEIA) category code file was manually adjusted for food matrices on top of data derived from [here](https://www.ars.usda.gov/ARSUserFiles/80400530/pdf/1718/Food_categories_2017-2018.pdf).
     1)  '2017-2018 FNDDS At A Glance - Ingredient Nutrient Values.xlsx'
     2)  '2017-2018 FNDDS At A Glance - FNDDS Ingredients.xlsx'
-    3)  'WWEIA_Category_Codes.csv'\
+    3)  'WWEIA_Category_Codes.csv'
+    
 -   **FooDB Data Sets**, Downloadable as FooDB CSV File from [foodb.ca/downloads](https://foodb.ca/downloads)
     1)  Content.csv (requires additional bzip2)
     2)  Compound.csv (requires additional bzip2)
-    3)  Food.csv\
+    3)  Food.csv
+
 -   **FooDB Polyphenols SDF**, Downloadable from GitHub [page](https://github.com/SWi1/Polyphenol_Quantification_FooDB/blob/main/FooDB/FooDB2_polyphenols_ID.sdf)
-    1)  SDF files contain atom and bond information to visualize compounds. Chemical visualization software (authors used MarvinView) can read SDF files to view these polyphenol structures.\
+    1)  SDF files contain atom and bond information to visualize compounds. Chemical visualization software (authors used MarvinView) can read SDF files to view these polyphenol structures.
+
 -   **Dietary Recall Data**, Downloadable as Items Analysis File from ASA24 Researcher Site
-    -   The dietary data utilized in the USDA Phenotyping Study underwent quality control. Methods are outlined in the paper: [*'Effect of Manual Data Cleaning on Nutrient Intakes Using the Automated Self-Administered 24-Hour Dietary Assessment Tool (ASA24)'*](https://doi.org/10.1093/cdn/nzab005)\
+    -   The dietary data utilized in the USDA Phenotyping Study underwent quality control. Methods are outlined in the paper: [*'Effect of Manual Data Cleaning on Nutrient Intakes Using the Automated Self-Administered 24-Hour Dietary Assessment Tool (ASA24)'*](https://doi.org/10.1093/cdn/nzab005)
+
 -   **Phenol Explorer Data**, Downloadable from Phenol Explorer online, Version 3.6
     1)  PhenolExplorer-RFTable_20190204.xlsx
     2)  compounds-classification_20230504.csv
@@ -38,10 +42,11 @@ Data that is publicly available is available on this GitHub repository.
 Scripts in each set are intended to be run sequentially.
 
 1)  Ingredientize - Adapted to R from Python Scripts created by Jules Larke. This script takes ASA24 Recall Data and iteratively breaks down mixed foods into their underlying ingredients.
-    -   01_ingredientize_unmatchedfoods_asa24_fndds.Rmd.
+    -   01_ingredientize_unmatchedfoods_asa24_fndds.Rmd
     -   02_ingredientize_mixedfoods.Rmd
     -   03_ingredientize_code_remap.Rmd
-    -   04_ingredientize_merge.Rmd\
+    -   04_ingredientize_merge.Rmd
+
 2)  FooDB to ASA Ingredient Descriptions - This script utilizes natural language processing to match ingredient descriptions in ASA24 data to their equivalent food description in FooDB.
     -   01_FooDB_FooDBCleaning.ipynb
     -   02_FooDB_TextProcessing.ipynb
@@ -50,10 +55,10 @@ Scripts in each set are intended to be run sequentially.
     -   05_FooDB_FNDDS_FullMatch_Part2.ipynb
     -   06_FooDB_FNDDS_FullMatch_Part3.Rmd
     -   07_FooDB_FNDDS_FullMatch_Part4.Rmd
-    -   08_FooDB_FNDDS_FullMatch_Part5.Rmd\
+    -   08_FooDB_FNDDS_FullMatch_Part5.Rmd
     
 3)  Other - This script curates food matrix classifications for ingredient codes.
-    -   Other_Food_Matrix.Rmd\ 
+    -   Other_Food_Matrix.Rmd
 
 4)  Polyphenol Quantification. This script extracts polyphenols from FooDB and links polyphenols to their content data in FooDB and retention factors from Phenol Explorer. The final script links polyphenol compound/content data to dietary recall data.
     -   Q1_Polyphenol_Quantification_PhenolID.Rmd
