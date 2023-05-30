@@ -14,6 +14,7 @@ __Required Input Files__.
   - *FooDB_phenol_content.csv.bz2* - Output from Q4_Polyphenol_Quantification_Units
   - *Food_updated.csv* - 01_FooDB_FooDBCleaning.ipynb
   - *FooDB_PE_RF.csv* - Output from 03_Polyphenol_Quantification_RF.Rmd
+  - *ASA_FooDB_Food_Matrix.csv* - Output from Other_Food_Matrix.Rmd
 
 __Information__. 
 This script merges ingredients within recall data to their ingredient equivalent in FooDB. The resulting output is subsequently merged with the FooDB polyphenol content file. 
