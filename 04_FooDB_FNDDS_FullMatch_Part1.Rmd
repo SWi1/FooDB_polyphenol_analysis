@@ -1,7 +1,7 @@
 ---
 title: "04_FooDB_FNDDSFullMatch"
 author: "Stephanie Wilson"
-date: "`r Sys.Date()`"
+date: "January 2023"
 output:
   pdf_document: default
   html_document: default
@@ -24,14 +24,13 @@ This script looks for ingredient code matches between ASA24 and FooDB. FooDB inc
      2b) Add in correct descriptions for formerly duplicated IDs
   
 __Output__
+  - *04_scores_auto_NOTchecked.csv* - Includes ASA codes that have multiple hits on FooDB when matched by food ids. These will be manually scored to check for accuracy of text similarity matching.
   - *asa_descripcleaned_codematched.csv* - Includes all cleaned ASA24 ingredient descriptions including FoodB ingredient code matches + those that did not have a match
-  - *missing_foodb_descrip.csv* - Just the ASA24 ingredient descriptions with no ingredient code match to FooDB
   
 
 ```{r Load packages and functions, include= FALSE, warning=FALSE, message=FALSE}
 library(tidyverse); library(stringdist)
-
-source('sim_score_function.R')
+source('Functions/sim_score_function.R')
 ```
 
 ```{r Load Data, include=FALSE}
@@ -92,6 +91,7 @@ scores_auto = scores_auto %>%
 duplicates = cbind(duplicates, scores_auto) 
 
 #duplicates File was exported here for manual scoring.
+write.csv(duplicates, 'data/04_scores_auto_NOTchecked.csv')
 ```
 
 
@@ -133,3 +133,7 @@ missing = asa %>%
 ```
 
 We will match the remaining 170 codes in Part II of the matching script and export what we have for now.
+
+
+
+

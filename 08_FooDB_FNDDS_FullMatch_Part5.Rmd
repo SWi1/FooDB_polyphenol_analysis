@@ -1,7 +1,7 @@
 ---
 title: "08_FooDB_FNDDS_FullMatch_Part5"
 author: "Stephanie Wilson"
-date: "`r Sys.Date()`"
+date: "January 2023"
 output: html_document
 ---
 
@@ -30,7 +30,7 @@ __Output__
 
 ```{r Load packages, include= FALSE, warning=FALSE, message=FALSE}
 library(tidyverse); library(readxl); library(stringdist)
-source('sim_score_function.R')
+source('Functions/sim_score_function.R')
 ```
 
 
@@ -280,13 +280,53 @@ greplhits = full_join(NA.Macros.hits, Macros.hits) %>%
 #Let us add food_id back in
 Food_V2_insert = Food_V2 %>% 
   select(food_V2_ID, food_id)
+```
 
-codematched_final = matched %>%
+Formatting and Merge
+```{r}
+codematched_semifinal = matched %>%
+  # Remove old entries
   filter(!Ingredient_code %in% greplhits$Ingredient_code) %>%
+  # Replace with updated entries
   full_join(greplhits) %>%
+  # Add V2 
   left_join(Food_V2_insert, by = 'food_V2_ID') %>%
-  relocate(food_id, .before = 'food_V2_ID')
+  relocate(food_id, .before = 'food_V2_ID') 
+```
+Begin Manual Corrections
 
+Vitamin D
+```{r}
+vitamind = codematched_semifinal %>%
+  filter(Ingredient_code == 999328) %>%
+  mutate(orig_food_id = NA,
+         orig_food_common_name = NA,
+         food_id = NA,
+         food_V2_ID = NA,
+         mean_score = NA)
+```
+
+Miscoded Foods
+
+  - celery raw to match to celery stalks (otherwise it's wild celery)
+  - kale raw to kale (otherwise its common cabbage)
+```{r}
+codematched_final  = codematched_semifinal %>%
+  
+  # Correct Vitamin D
+  filter(!Ingredient_code == 999328) %>%
+  full_join(vitamind) %>%
+
+  # Specific Foods
+  mutate(food_id = ifelse(orig_food_common_name =='celery raw', 215, 
+                                        food_id),
+         food_id = ifelse(orig_food_common_name =='kale raw', 395, 
+                                        food_id))
+```
+
+
+Check and Save
+```{r}
 #Number of scores now less than 0.5
 #At the start of this script, we had 68 codes with a score < 0.5
 codematched_final %>% filter(mean_score < 0.5) %>% count()
@@ -294,10 +334,6 @@ codematched_final %>% filter(mean_score < 0.5) %>% count()
 write.csv(codematched_final, 'data/codematched_final.csv',
           row.names = FALSE)
 ```
-
-
-
-
 
 
 

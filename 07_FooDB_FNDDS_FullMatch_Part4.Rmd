@@ -1,7 +1,7 @@
 ---
 title: "07_FooDB_FNDDSFullMatch_Part4"
 author: "Stephanie Wilson"
-date: "`r Sys.Date()`"
+date: "January 2023"
 output: html_document
 ---
 
@@ -39,7 +39,7 @@ __Output__
 
 ```{r Load packages, include= FALSE, warning=FALSE, message=FALSE}
 library(tidyverse); library(readxl); library(stringdist)
-source('sim_score_function.R')
+source('Functions/sim_score_function.R')
 ```
 
 

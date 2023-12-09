@@ -1,11 +1,11 @@
 ---
 title: "03_FooDB_ManualMatch100"
 author: "Stephanie Wilson"
-date: "`r Sys.Date()`"
+date: "January 2023"
 output: html_document
 ---
 
-# Matching FooDB to ASA24 Ingredient Descriptions
+# Database Matching: FooDB to ASA24 Ingredient Descriptions
 ## Step 3: Manually Matching 100 random ASA food descriptions to FooDB
 
 __Required Input Files__
@@ -15,7 +15,7 @@ __Required Input Files__
 __Information__
 This script manually matches 100 food descriptions from ASA dietary recall data to FooDB.
 
-  1) Generates a simple random sample of 100 food descriptions from dietary recalls.
+  1) Generates a simple random sample of 100 food descriptions of remapped asa descriptions.
   2) Manual comparisons aided by ingredient subcode matching and pattern searching.
   3) Create a function that will match ASA24 with manually curated FooDB codes
   4) Export data frame with matched info
