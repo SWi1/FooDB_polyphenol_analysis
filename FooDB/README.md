@@ -1,5 +1,8 @@
-# README
-## About FooDB & Data Dictionary
+#README
+# About FooDB & Data Dictionary
+
+Stephanie Wilson, January 2022
+
 
 FooDB is promoted as the world's largest and most comprehensive food composition database. Within the downloadable files from FooDB version 1 (accessed September 2022), there are a reported 70,926 compounds and 992 foods. These compounds are derived from numerous databases and sources such as those listed below. n here shows the number of content entries from each database.
 
@@ -8,7 +11,7 @@ FooDB is promoted as the world's largest and most comprehensive food composition
 FooDB has several dozen data files freely accessible online for download. Below is a data dictionary for three key FooDB downloadable files: Compound.csv, Content.csv, and Food.csv. These files were downloaded from [FooDB.ca](www.foodb.ca) in September 2022.
 
 
-### Compound.csv
+## Compound.csv
 
 Compound.csv contains data on compounds including name, chemical structure identifiers, and taxonomic data.
 
@@ -32,7 +35,7 @@ Compound.csv contains data on compounds including name, chemical structure ident
 | subklass | text | Chemical subclass. |    |
 
 
-### Content.csv
+## Content.csv
 
 Content.csv contains food composition data of compounds. Of note is that data from the initial database or source has been preserved.
 
@@ -59,14 +62,14 @@ Content.csv contains food composition data of compounds. Of note is that data fr
 |   updater_id |  |  |  No values or data provided.  |
 |   created_at | date/time | Date and time entry was created |        |
 |   updated_at | text | Date and time entry was updated |        |
-|   orig_method | text | ADD TEXT. |        |
-|   orig_unit_expression | text | ADD TEXT.  |        |
+|   orig_method | text | Method used in original data source | Most are empty    |
+|   orig_unit_expression | text | Units from original data source  |    Most are empty    |
 |   standard_content | integer  |  Appears to be a duplicate of orig_content   |        |
 |   preparation_type |  text  |  Methods of preparation or processing   |        |
 |   export | binary  |  0, 1    |        |
 
 
-### Food.csv
+## Food.csv
 
 Food.csv contains information about the foods and beverages within FooDB.
 
@@ -94,4 +97,4 @@ Food.csv contains information about the foods and beverages within FooDB.
 | category | text | Unclear | Values are only 'specific' | 
 | ncbi_taxonomy_id | integer | NCBI taxonomy number for food | | 
 | export_to_foodb | binary | TRUE, FALSE| | 
-| public_id |text | ID for searching food on FooDB | |
+| public_id |text | ID for searching food on FooDB | | 
