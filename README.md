@@ -28,7 +28,7 @@ Data that is publicly available is available on this GitHub repository.
     1)  Content.csv (requires additional bzip2)
     2)  Compound.csv (requires additional bzip2)
     3)  Food.csv
-    4)  dt_compound_index.json\, Milk-Specific
+    4)  dt_compound_index.json, Milk-Specific
     
 -   **SDF**, SDF, or structure-data format, files contain atom and bond information to visualize compounds. Chemical visualization software (Ex. MarvinView) can read SDF files to view structures.
 
@@ -52,7 +52,7 @@ Scripts in each set are intended to be run sequentially.
     -   01_ingredientize_unmatchedfoods_asa24_fndds.Rmd.
     -   02_ingredientize_mixedfoods.Rmd
     -   03_ingredientize_code_remap.Rmd
-    -   04_ingredientize_merge.Rmd\
+    -   04_ingredientize_merge.Rmd
     
 2)  Mapping. FooDB to ASA Ingredient Descriptions - This script utilizes natural language processing to match ingredient descriptions in ASA24 data to their equivalent food description in FooDB.
     -   01_FooDB_FooDBCleaning.ipynb
@@ -63,7 +63,7 @@ Scripts in each set are intended to be run sequentially.
     -   05_FooDB_FNDDS_FullMatch_Part2.ipynb
     -   06_FooDB_FNDDS_FullMatch_Part3.Rmd
     -   07_FooDB_FNDDS_FullMatch_Part4.Rmd
-    -   08_FooDB_FNDDS_FullMatch_Part5.Rmd\
+    -   08_FooDB_FNDDS_FullMatch_Part5.Rmd
 
 3)  Estimation. This script extracts polyphenols from FooDB and links polyphenols to their content data in FooDB and retention factors from Phenol Explorer. The final script links polyphenol compound/content data to dietary recall data.
     -   E1_Polyphenol_Estimation_PhenolID.Rmd
@@ -76,7 +76,7 @@ Scripts in each set are intended to be run sequentially.
     -   E4_Polyphenol_Estimation_Content_Aggregate.Rmd
     -   E5_Polyphenol_Estimation_ASAmerge.Rmd
     
-4) Analyses. Information provided in separate README.md.     
+4) Analyses. Information provided in README.md within Analyses directory.    
 
 ## Outputs
 
