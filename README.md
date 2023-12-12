@@ -11,8 +11,8 @@ This repository contains scripts for dietary polyphenol estimation and inflammat
 -   R 4.2.2 (or newer)
 -   RStudio '2022.12.0.353' (or newer)
 -   Python 3.9.13
--   (TaxaHFE version 2.0)[https://github.com/aoliver44/taxaHFE]
--   (dietML) [https://github.com/aoliver44/nutrition_tools]
+-   [TaxaHFE version 2.0](https://github.com/aoliver44/taxaHFE)
+-   [dietML](https://github.com/aoliver44/nutrition_tools)
 
 ## Required Files
 
@@ -30,14 +30,14 @@ Data that is publicly available is available on this GitHub repository.
     3)  Food.csv
     4)  dt_compound_index.json\, Milk-Specific
     
--   **SDF**, SDF, or structure-data format, files contain atom and bond information to visualize compounds. Chemical visualization software (Ex. MarvinView) can read SDF files to view structures.\
+-   **SDF**, SDF, or structure-data format, files contain atom and bond information to visualize compounds. Chemical visualization software (Ex. MarvinView) can read SDF files to view structures.
 
     1) FooDB SDF downloadable from GitHub [page](https://github.com/SWi1/Polyphenol_Quantification_FooDB/blob/main/FooDB/FooDB2_polyphenols_ID.sdf)
     2) Milk (Poly)phenolic Scrape from FooDB.ca SDF [page](https://github.com/SWi1/FooDB_polyphenol_analysis/blob/Version2/FooDB/milk.sdf)
   
     
 -   **Dietary Recall Data**, Downloadable as Items Analysis File from ASA24 Researcher Site. The dietary data utilized in the USDA Phenotyping Study underwent quality control. Methods are outlined in the paper: [*'Effect of Manual Data Cleaning on Nutrient Intakes Using the Automated Self-Administered 24-Hour Dietary Assessment Tool (ASA24)'*](https://doi.org/10.1093/cdn/nzab005)
-\
+
 -   **Phenol Explorer Data**, From Phenol Explorer online, Version 3.6
     
     1)  PhenolExplorer-RFTable_20190204.xlsx
