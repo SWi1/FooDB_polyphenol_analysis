@@ -1,13 +1,13 @@
 ---
-title: "Q1_Polyphenol_Quantification_PhenolID"
+title: "E1_Polyphenol_Estimation_PhenolID"
 author: "Stephanie Wilson"
-date: "`r Sys.Date()`"
+date: "January 2023"
 output:
   pdf_document: default
   html_document: default
 ---
 
-# Polyphenol Quantification
+# Polyphenol Estimation
 ## Step 1: Identification of Phenols in FooDB
 
 __Required Input Files__  
@@ -17,7 +17,7 @@ __Required Input Files__
   - *Food.csv* - FooDB data (version 1) downloaded Sept 2022 from FooDB.ca/downloads
 
 __Information__  
-Wilson and Lemay corresponded with Jose Naveja to obtain phenolic compounds from FooDB (Wilson sent Naveja the version she downloaded Sept 2022). Dr. Naveja identified phenolic compounds using methods outlined in his 2018 paper in FL100 and emailed back the resulting SDF file. 
+Wilson and Lemay corresponded with Jose Naveja to obtain phenolic compounds from FooDB (Wilson sent Naveja the version downloaded Sept 2022). Dr. Naveja identified phenolic compounds using methods outlined in his 2018 paper in FL100 and emailed back the resulting SDF file. 
 
 This script pulls out unique identifiers of phenolic compounds (identified by Naveja) from a chemical SDF file and matches identifiers to ones present in FooDB's Content and Compound csv files. Resulting data can also be explored in the optional step 4. Specifically, this script does the following:
 
@@ -32,7 +32,7 @@ This script pulls out unique identifiers of phenolic compounds (identified by Na
          - Output (Optional): Endogenous_phenols.csv
 
 __Outputs__  
-  - *FooDB_phenols.csv* - Phenols pulled out of Compounds.csv
+  - *FooDB_phenols.csv* - Polyphenols pulled out of Compounds.csv
   
 ```{r Load Packages, message=FALSE}
 library(cinf) #to load sdf files
@@ -131,9 +131,8 @@ distinct_quantified = FooDB_phenol_content_quantified %>%
 # What is the total number of quantified compounds?
 nrow(distinct_quantified)
 ```
-
+What are the top citation sources?
 ```{r}
-# What are the top citation sources?
 citation = FooDB_phenol_content_quantified %>% 
   count(citation, sort=TRUE)
 
@@ -141,7 +140,7 @@ citation = FooDB_phenol_content_quantified %>%
 citation[1:5,]
 
 # First three add a lot of information, what's their total contribution?
-sum(citation[1:2,2])/sum(citation[,2]) #top 3/total
+message("Total contribution of top three citations: ", round(sum(citation[1:2,2])/sum(citation[,2])*100, digits =1), "%") #top 3/total
 ```
 
 Of the quantified data (11.4%), we have 493 unique compounds. Approximately 86.7% of the food-associate entries are coming from Phenol Explorer (4956) and the USDA (3893).

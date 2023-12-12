@@ -1,0 +1,137 @@
+---
+title: "E1B_Polyphenol_Estimation_PhenolID_Milk"
+author: "Stephanie Wilson"
+date: "August 2023"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Polyphenol Estimation
+## Step 1B: Polyphenols in Milk in FooDB
+
+__Required Input Files__  
+  - *milk.sdf* - SDF from Naveja email communications
+  - *FooDB_phenols.csv* - Phenols pulled out of Compounds.csv
+
+__Information__  
+In August 2023, it was discovered there were discrepanccies with compounds in milk originating from a [2019 paper included in FooDB](https://doi.org/10.1021/acs.jafc.9b00204). Milk compounds and their concentrations were scraped off of Foodb.ca with Dr. Jose Naveja helping us re-identify polyphenolic compounds in milk. Identification followed methods outlined in his 2018 paper in FL100. 
+
+Specifically, this script does the following:
+
+  1) Pull out ID's from provided Naveja SDF (file of identified phenolic compounds in FooDB).
+  2) Match phenol IDs from SDF to FoodB's Compound List for additional compound information
+  3) Revise Units
+  
+__Outputs__  
+  - *milk_scrape_polyphenols.csv* - milk polyphenols content data
+  - *milk_scrape_phenols.csv* - milk phenols content data
+  
+```{r Load Packages, message=FALSE}
+library(cinf) ; library(tidyverse)
+```
+
+
+```{r Load Data}
+# Load SDF dataset provided by Dr. Naveja
+SDF = read_sdf('FooDB/milk.sdf')
+
+# Load FooDB data, accessed September 2022
+# Use Content.csv to assess all possible matches
+polyphenols = read.csv('FooDB/FooDB_phenols.csv')
+
+# All compounds from milk scraped off of FooDB
+# File that was sent to Jose 
+scrape = read.csv('FooDB/milk_compound_data.csv')
+```
+
+
+### 1) Pull out information from provided Naveja SDF (file of identified phenolic compounds in FooDB).
+
+Pull out compound identifying information and polyphenol status from props
+```{r}
+# Template for map usage _map(list, function, 'item name or position number')_
+ID = SDF %>% 
+  map_chr(., pluck, 'props', 'compound_public_id') %>%
+  tibble() %>%
+  rename('compound_public_id' = 1)
+
+# Jose added an additional column to let us know if it was polyphenolic or phenolic
+polyphenol_status = SDF %>% 
+  map_chr(., pluck, 'props', 'Polyphenol') %>%
+  tibble() %>%
+  rename('polyphenol_status' = 1) %>%
+  mutate(polyphenol_status = ifelse(polyphenol_status == '1', 'polyphenol', 'phenol'))
+
+ID_merge = cbind(ID, polyphenol_status)
+```
+
+
+### 2) Match phenol IDs from SDF to FoodB's Compound List for additional compound information
+```{r Pull out selected phenolic IDs from FooDB Compounds}
+milk_phenols = right_join(scrape, ID_merge, by ='compound_public_id') %>%
+  mutate(compound_name = ifelse(compound_public_id=='FDB023335',
+                                "3,3',4'5-Tetrahydroxystilbene", compound_name))
+
+#How many compounds are unquantified?
+table(is.na(milk_phenols$Average))[2]/nrow(milk_phenols)*100
+
+# How many are polyphenols
+table(milk_phenols$polyphenol_status=='polyphenol')
+```
+
+
+### 3) Revise Units
+
+Given:  
+Concentration (g/L) = (Concentration in micromoles/L) × (Molar mass in g/mol)
+
+Example:  
+Concentration in micromoles/L (uM): 500 uM
+  - Molar mass in g/mol: 650.7900 g/mol
+  - Concentration (g/L) = (500 × 10^-6 mol/L) × 650.7900 g/mol
+  - Concentration (g/L) = 0.0005 mol/L × 650.7900 g/mol
+  - *Concentration (g/L) = 0.325395 g/L*
+  
+Given: 
+1 g/L = 10 mg/100g
+
+Example: 
+  - Concentration (mg/100g) = 0.325395 g/L × 10 = 3.25395 mg/100g
+
+```{r}
+molar = milk_phenols %>%
+  filter(units =='uM') %>%
+  select(-units) %>%
+  mutate(low_end = ((low_end * 10^-6) * mono_mass) * 10,
+         high_end = ((high_end * 10^-6) * mono_mass) * 10,
+         Average = ((Average * 10^-6) * mono_mass) * 10,
+        units = 'mg/100 g')
+```
+
+
+```{r}
+# What's missing concentration data?
+unquantified = milk_phenols %>%
+  filter(is.na(Average))
+
+# Create a new version where everything's mg/100g
+mg100g = milk_phenols %>%
+  filter(units =='mg/100 g') %>%
+  
+  #Add the updated molar data
+  full_join(molar) %>%
+  
+  # Add the missing values in too
+  full_join(unquantified)
+```
+
+Export csv
+```{r}
+phenol_list = mg100g %>% filter(polyphenol_status == 'phenol')
+polyphenol_list = mg100g %>% filter(polyphenol_status == 'polyphenol')
+
+write.csv(phenol_list, 'FooDB/milk_scrape_phenols.csv', row.names = FALSE)
+write.csv(polyphenol_list, 'FooDB/milk_scrape_polyphenols.csv', row.names = FALSE)
+```
+

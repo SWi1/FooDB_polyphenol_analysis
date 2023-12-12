@@ -1,16 +1,16 @@
 ---
-title: "Q3_Polyphenol_Quantification_RF"
+title: "E3_Polyphenol_Estimation_RF"
 author: "Stephanie Wilson"
 date: "`r Sys.Date()`"
 output: html_document
 ---
 
-#  Polyphenol Quantification
+#  Polyphenol Estimation
 ## Step 03: Adding in Retention Factors
 
 __Required Input Files__.                          
 
-  - *FooDB_phenol_premerge.csv.bz2* - Output from Q2_Polyphenol_Quantification_Content.Rmd
+  - *FooDB_phenol_premerge.csv.bz2* - Output from E2_Polyphenol_Estimation_Content.Rmd
   - *PhenolExplorer-RFTable_20190204.xlsx* - Phenol Explorer Retention Factors from Version 3.6
   - *foods-classification.csv* - Phenol Explorer Food Classification from Version 3.6
   - *compounds-classification_20230504.csv* - Phenol Explorer Compound taxonomic classifications from Version 3.6
@@ -21,7 +21,7 @@ FooDB maintains original data from source material; thus, Phenol Explorer entrie
 In the script development and testing, it was discovered that there are incorrect source food names and ids within FooDB. These errors were manually reviewed and corrected before matching of retention factors. 
 
 __Output__. 
-  - *FooDB_Content_Citation_Counts.csv* - contains count data on the different citations within our FooDB polyphenol content file. 
+  - *PhenolExplorer_source_id_namecheck.csv* - Phenol Explorer Name check for manual review
   - *FooDB_PE_RF.csv* - contains FooDB/Phenol Explorer matches with retention factor data. Also includes those foods that did not match.
   
 Load libraries for data reading and manipulation
@@ -29,7 +29,7 @@ Load libraries for data reading and manipulation
 # Load libraries for data reading and manipulation
 library(tidyverse); library(readxl); library(stringr); library(stringdist)
 
-source('sim_score_function.R')
+source('Functions/sim_score_function.R')
 ```
 
 Load Data
@@ -43,8 +43,6 @@ rf = read_xlsx('FooDB/PhenolExplorer/PhenolExplorer-RFTable_20190204.xlsx', shee
   dplyr::rename('orig_source_id' = 'compound_id') %>%
   mutate(food_name = str_to_lower(food_name),
          food_name = gsub("[[:punct:][:blank:]]+", " ", food_name))
-
-rf2 = read_xlsx('FooDB/PhenolExplorer/PhenolExplorer-RFTable_20190204.xlsx', sheet = 2)
 
 #Phenol Explorer compound taxonomy
 tax = read.csv('FooDB/PhenolExplorer/compounds-classification_20230504.csv')
@@ -65,20 +63,6 @@ message('Number of unique foods in Retention Factor File: ',
 **Important** rf compound_id's that are 2 and 731 can be pulled out in a second script. These retention factors can be applied across multiple compounds.
   - 731 = Total Polyphenols
   - 2 = Total anthocyanins
-
-Quick Review of Citation Sources
-```{r}
-citation_type = foodb %>%
-  select(citation, citation_type)
-
-content_citations = foodb %>%
-  dplyr::count(citation, sort = TRUE) %>%
-  left_join(citation_type, by = 'citation') %>%
-  distinct(citation, .keep_all = TRUE)
-
-write.csv(content_citations, 'PLOT/FooDB_Content_Citation_Counts.csv', row.names = FALSE)
-```
-
 
 
 ### 1) Pull out PhenolExplorer entries from FooDB 
@@ -124,7 +108,6 @@ write.csv(namecheck, 'FooDB/PhenolExplorer_source_id_namecheck.csv', row.names =
 
 **External Action**: Perform Manual Review, id entry, Load Data Back in, Reassess
 
-
 ```{r}
 namecheck_review = read.csv('FooDB/PhenolExplorer_source_id_namecheck_entered.csv') %>%
   left_join(pe_food, by = c('id_correction' = 'food_id')) %>%
@@ -156,7 +139,7 @@ namecheck_final = namecheck_review %>%
 
 #Let us update our rf id name for merging
 rf = rf %>% 
-  dplyr::rename('id_correction' = 'food_id')
+  rename('id_correction' = 'food_id')
 
 #Update and Merge RF
 phenolexplorer_updated = phenolexplorer %>%
@@ -410,17 +393,6 @@ message('Number of unique foods (FooDB): ',
   nrow(final.RF %>% dplyr::filter(!is.na(aggregate_RF)) %>% 
          dplyr::select(orig_source_id) %>% dplyr::distinct()))
 ```
-What foods do we have zero polyphenol data on?
-```{r}
-noRF.updated %>%
-  distinct(food_name) %>%
-  filter(!food_name %in% hasRF.updated$food_name)
-```
 
-Which compounds RF from more than one method?
-```{r}
-multipleRF = hasRF.updated %>%
-  select(food_id, compound_id, experimental_method_group) %>%
-  distinct(food_id, compound_id, experimental_method_group) 
-```
+
 

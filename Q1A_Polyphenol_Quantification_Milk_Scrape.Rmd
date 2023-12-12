@@ -1,0 +1,205 @@
+---
+title: "E1A_Polyphenol_Estimation_Milk_Compounds'
+author: "Stephanie Wilson"
+date: "August 2023"
+output: html_document
+---
+
+# Polyphenol Estimation
+## Step 1A: Obtain Milk Compounds Properties
+
+__Required Input Files__  
+  - *dt_compound_index.json* - compound and concentration information for compounds in milk, id = 632, pulled from FooDB.ca.
+  
+__Information__  
+After manually reviewing the html elements, it was determined that the compound concentration table on the milk page is pulled from: https://foodb.ca/foods/632/contents/dt_compound_index.all. This script scrapes the FooDB website to pull chemical compound classification data for compounds in milk.
+
+  1) Extract Compound Data from FooDB Milk JSON file
+  2) Scrape Milk Physiochemical Data
+
+__Outputs__  
+  - *milk_scraping_output.csv* - output from webscrape of milk entry on FooDB
+  - *milk_compound_data.csv* - output from webscrape of milk entry on FooDB, PLUS all of the compounds that were not able to be scraped. 
+
+```{r LOAD PACKAGES, messages = FALSE}
+library(tidyverse); library(xml2); library(stringr); library(jsonlite); library(rvest)
+```
+
+### 1) Extract Compound Data from FooDB Milk JSON file
+
+```{r}
+# Read in list of all compounds in milk
+milk = fromJSON("FooDB/dt_compound_index.json")
+milk_data = as.data.frame(milk$data)
+```
+
+Format the Data, First with column ids, names, and citation. 
+```{r}
+milk_data$food_id = 632
+
+#Pull out the following string
+id = str_match(milk_data$V2, "/structures/(.*?)/image.png")
+
+#Extract the data between the second group
+milk_data$compound_public_id = id[ , 2]
+milk_data$compound_name = gsub("<.*?>", "", milk_data$V1)
+#milk_data$citation = gsub("<.*?>", "", milk_data$V5)
+```
+
+Extract Units
+```{r}
+units_raw = strsplit(milk_data$V3, " ")
+units = sapply(units_raw, function(x) paste(x[4:length(x)], collapse = " "))
+units = ifelse(units == 'quantified', 'NA', units)
+```
+
+Format the remaining data. This is a cleaned and formatted list of milk compounds.
+```{r}
+milk_data_format = milk_data %>%
+  mutate(V3 = ifelse(V3 == 'Expected but not quantified', 'NA', V3),
+         V4 = ifelse(V4 == 'Not Available', 'NA', V4),
+    low_end = as.numeric(str_extract(V3, "\\d+\\.\\d+")),
+    high_end = as.numeric(str_extract(V3, "(?<= - )\\d+\\.\\d+")),
+    Average = as.numeric(str_extract(V4, "\\d+\\.\\d+|\\d+")),
+    units = units,
+    citation = gsub("<.*?>", "", V5)) %>%
+  select(-c(V1:V5))
+```
+
+
+### 2) Scrape Milk Physiochemical Data
+**SKIP to NEXT SECTION IF RUN ALREADY**
+
+Create all of the compound paths for searching. 
+```{r}
+compound_paths = as.data.frame(paste("https://foodb.ca/compounds/", milk_data_format$compound_public_id, sep = '')) %>%
+  rename('path' = 1)
+```
+
+#### 2a) Scrape Test
+```{r}
+#GET TEST PATH
+doc = read_xml(curl::curl(compound_paths$path[2]))
+
+#Return Physiochemical Properties
+exp_property = xml_text(html_elements(doc, xpath = '//property //kind'))
+exp_property_value = xml_text(html_elements(doc, xpath = '//property //value'))
+#exp_property_source = xml_text(html_elements(doc, xpath = '//property //source'))
+
+# Create Dataframe, but filter for logp
+data = data.frame(property = exp_property, value = exp_property_value) %>%
+  filter(property %in% c('logp', 'mono_mass', 'smiles', 'inchi', 'inchikey')) %>%
+  pivot_wider(names_from = c(property), values_from = value, values_fn = list)
+```
+
+```{r}
+source('Functions/get_properties.R')
+```
+
+#### 2b) Scrape Run, 3 batches
+
+For spliting the list of multiple logp values in downstream formatting. 
+```{r}
+split_numbers = function(x){
+  if (length(x) ==2) {
+    return(x)
+    
+  } else if (length(x) == 1) {
+    return(c(x, NA))
+    
+  } else {
+    return(NA)
+  }
+}
+```
+
+```{r}
+Batch1 = compound_paths %>%
+  slice_head(n = 739)
+
+Batch1_output = get_properties(Batch1$path)
+
+Batch1_output_format = Batch1_output %>%
+  rowwise() %>%
+  mutate(mono_mass = as.numeric(mono_mass),
+         smiles = as.character(smiles),
+         inchi = as.character(inchi),
+         inchikey = as.character(inchikey),
+         logp1 = as.numeric(split_numbers(logp)[1]),
+         logp2 = as.numeric(split_numbers(logp)[2])) %>%
+  select(compound_public_id, mono_mass, smiles, inchi, inchikey, logp1, logp2)
+
+write.csv(Batch2_output_format, 'milk_scraping_batch2output.csv', row.names = FALSE)
+```
+
+```{r}
+Batch2 = compound_paths %>%
+  filter(!path %in% Batch1$path) %>%
+  slice_head(n = 739)
+Batch2_output = get_properties(Batch2$path)
+
+Batch2_output_format = Batch2_output %>%
+  rowwise() %>%
+  mutate(mono_mass = as.numeric(mono_mass),
+         smiles = as.character(smiles),
+         inchi = as.character(inchi),
+         inchikey = as.character(inchikey),
+         logp1 = as.numeric(split_numbers(logp)[1]),
+         logp2 = as.numeric(split_numbers(logp)[2])) %>%
+  select(compound_public_id, mono_mass, smiles, inchi, inchikey, logp1, logp2)
+
+write.csv(Batch2_output_format, 'milk_scraping_batch2output.csv', row.names = FALSE)
+```
+
+```{r}
+Batch3 = compound_paths %>%
+  filter(!path %in% Batch1$path) %>%
+  filter(!path %in% Batch2$path) 
+Batch3_output = get_properties(Batch3$path)
+
+Batch3_output_format = Batch3_output %>%
+  rowwise() %>%
+  mutate(mono_mass = as.numeric(mono_mass),
+         smiles = as.character(smiles),
+         inchi = as.character(inchi),
+         inchikey = as.character(inchikey),
+         logp1 = as.numeric(split_numbers(logp)[1]),
+         logp2 = as.numeric(split_numbers(logp)[2])) %>%
+  select(compound_public_id, mono_mass, smiles, inchi, inchikey, logp1, logp2)
+
+write.csv(Batch3_output_format, 'milk_scraping_batch3output.csv', row.names = FALSE)
+```
+
+### 3) Combine batches
+```{r}
+Batch_join = Batch1_output_format %>%
+  full_join(Batch2_output_format) %>%
+  full_join(Batch3_output_format) 
+
+write.csv(Batch_join, 'FooDB/milk_scraping_output.csv', row.names = FALSE)
+```
+
+LOAD OUTPUT AND COMPILE
+```{r}
+Batch_output = Batch_join %>%
+  left_join(milk_data_format) %>%
+  relocate(compound_name, .after = compound_public_id)
+```
+
+What compounds were not searched?
+```{r}
+Batch_missing = anti_join(milk_data_format, Batch_output) %>%
+  mutate(mono_mass = as.numeric("NA"),
+         smiles = "NA",
+         inchi = "NA",
+         inchikey = "NA",
+         logp1 = as.numeric("NA"),
+         logp2 = as.numeric("NA"))
+
+#Merge the unsearched with the searched
+Batch_full = full_join(Batch_output, Batch_missing)
+
+write.csv(Batch_full, 'FooDB/milk_compound_data.csv', row.names = FALSE)
+```
+
+These compounds were sent to collaborator Dr. Naveja for polyphenol screening. 

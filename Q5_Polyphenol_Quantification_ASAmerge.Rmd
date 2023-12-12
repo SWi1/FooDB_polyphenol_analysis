@@ -1,24 +1,26 @@
 ---
-title: "Q5_Polyphenol_Quantification_ASAMerge"
+title: "Q5_Polyphenol_Estimation_ASAMerge"
 author: "Stephanie Wilson"
-date: "`r Sys.Date()`"
+date: "September 2023"
 output: html_document
 ---
 
-#  Polyphenol Quantification
+#  Polyphenol Estimation
 ## Step 05: Merger with ASA
 
 __Required Input Files__.                          
   - *codematched_final.csv* - Output from 08_FooDB_FNDDS_FullMatch_Part5    
-  - *ingredientized_asa_10-2022.csv* - Output from 04_ingredientize_merge.rmd script, 'Ingredientized' Quality Controlled ASA24 Recall Data from FL100 Study.  
-  - *FooDB_phenol_content.csv.bz2* - Output from Q4_Polyphenol_Quantification_Units
+  - *ingredientized_asa_10-2022.csv* - Output from 04_ingredientize_merge.rmd script, 
+      - 'Ingredientized' Quality Controlled ASA24 Recall Data from FL100 Study.  
+  - *FooDB_phenol_content.csv.bz2* - Output from E4_Polyphenol_Estimation_Units
   - *Food_updated.csv* - 01_FooDB_FooDBCleaning.ipynb
-  - *FooDB_PE_RF.csv* - Output from 03_Polyphenol_Quantification_RF.Rmd
-  - *ASA_FooDB_Food_Matrix.csv* - Output from Other_Food_Matrix.Rmd
+  - *FooDB_PE_RF.csv* - Output from E03_Polyphenol_Estimation_RF.Rmd
+  - *FooDB_phenol_content_foodsums.csv* - Output from E4_Polyphenol_Estimation_Content
 
 __Information__. 
 This script merges ingredients within recall data to their ingredient equivalent in FooDB. The resulting output is subsequently merged with the FooDB polyphenol content file. 
-    1) Merger of dietary recall data with FooDB matches and then polyphenol content     - This step also includes the creation of a new column, **pp_consumed**, which is the amount of polyphenols consumed in milligrams, which incorporates all possible retention factor data. 
+    1) Merger of dietary recall data with FooDB matches and then polyphenol content     
+      - This step also includes the creation of a new column, **pp_consumed**, which is the amount of polyphenols consumed in milligrams, which incorporates all possible retention factor data. 
 
 __Output__. 
   - *FooDB/FooDB_phenol_content_ASAmerged.csv.bz2*
@@ -48,10 +50,6 @@ ingredients = read.csv('Ingredientize/data/ingredientized_asa_10-2022.csv') %>%
 
 #Load updated FooDB Food ID's
 food_sums = read.csv('FooDB/FooDB_phenol_content_foodsums.csv') 
-
-#Load Food Matrix Data
-food_matrix = read.csv('data/ASA_FooDB_Food_Matrix.csv') %>%
-  select(c(FoodCode, Ingredient_code, FoodMatrix))
 ```
 
 
@@ -61,8 +59,6 @@ Merge is based on food_id.
 Link matched ASA/FooDB matched descriptions. Result is ingredientized ASA matched to FooDB.
 ```{r}
 ASA = left_join(ingredients, matched, by = 'Ingredient_code') %>%
-  left_join(food_matrix, by = c('FoodCode', 'Ingredient_code')) %>%
-  relocate(FoodMatrix, .after = WWEIA.Category.number) %>%
   relocate(Ingredient_code, Ingredient_description, food_id, food_V2_ID, 
            orig_food_common_name, mean_score, .after = Food_Description) %>%
   relocate(RecallNo, .after = UserName) %>%
@@ -70,12 +66,8 @@ ASA = left_join(ingredients, matched, by = 'Ingredient_code') %>%
                    IntakeStartDateTime, IntakeEndDateTime, RecallAttempt))
 
 message('Number of unique foods in ASA: ',
-  length(unique(ASA$food_id)),
-  
-  '\nNumber of unique compounds in ASA: ',
-  length(unique(ASA$compound_id)))
+  length(unique(ASA$food_id)))
 ```
-
 
 Merge FooDB-matched ASA Ingredient Codes with FooDB Polyphenol Content File.
   - Link between FooDB Polyphenol Content and ASA code-matched data is *food_id*.
@@ -88,6 +80,14 @@ Check how many retention factors carried over.
 hasRF = ASA_FooDB %>% 
   dplyr::filter(!is.na(ASA_FooDB$aggregate_RF))
 
+# How many compounds are quantified that have RF/#How many compounds are quantified
+nrow(ASA_FooDB %>% 
+       filter(!is.na(orig_content_avg_RFadj)) %>% 
+                filter(!is.na(aggregate_RF)))/
+nrow(ASA_FooDB %>% filter(!is.na(orig_content_avg_RFadj))) 
+```
+Summary
+```{r}
 message('Number of unique foods in ASA-FooDB (with RF): ',
   length(unique(hasRF$food_id)),
   
@@ -102,7 +102,6 @@ message('Number of unique foods in ASA-FooDB (with RF): ',
   nrow(hasRF %>% dplyr::filter(orig_content_avg_RFadj > 0) %>%
     dplyr::select(compound_id) %>% distinct()))
 ```
-
 
 ### 2) Updating Content entries
 
@@ -140,8 +139,8 @@ ASA_FooDB_adj = ASA_FooDB %>%
 
 ### 3) Adjusting Beverages
 
-'Nectar' Beverages, Adjust for percent juice. Only a handful of users.
-
+'Nectar' Beverages
+Adjust for percent juice. Only a handful of users.
 ```{r}
 #Nectar Food Codes
 nectar_ids = c('64203020', '64204010')
@@ -154,7 +153,7 @@ nectar = ASA_FooDB_adj %>%
 ```
 
 
-FooDB values for tea and coffee are provided as dry weight and require adjustment for brewing. The following ratios were used for adjustment:  
+FooDB values for tea and coffee derived from Dr. Duke's Ethnobotanical database are provided as dry weight and require adjustment for brewing. The following ratios were used for adjustment:  
   - *Tea*: 1g dry weight per 50 mL water 
     -  [(Kowalsa et al 2021)](https://doi.org/10.3390/molecules26164773)
   - *Coffee*: 10 g dry weight per 180 mL water
@@ -167,8 +166,9 @@ tea_food_ids = c(1021, 957, 38, 940, 849, 939, 517, 748)
 
 tea = ASA_FooDB_adj %>%
   dplyr::filter(food_id %in% tea_food_ids) %>%
-  dplyr::mutate(pp_consumed = (orig_content_avg_RFadj*0.01) *
-           (Ingredient_consumed_g*(1/50)))
+  dplyr::mutate(pp_consumed = ifelse(citation == 'DUKE', 
+                                     (orig_content_avg_RFadj*0.01) * (Ingredient_consumed_g * (1/50)), # Adjustment
+                                     (orig_content_avg_RFadj*0.01) * Ingredient_consumed_g))
 ```
 
 Coffee Adjustment
@@ -178,30 +178,30 @@ coffee_food_ids = c(891, 60, 58, 59)
 
 coffee = ASA_FooDB_adj %>%
   dplyr::filter(food_id %in% coffee_food_ids) %>%
-  dplyr::mutate(pp_consumed = (orig_content_avg_RFadj*0.01) *
-                  (Ingredient_consumed_g*(10/180)))
+  dplyr::mutate(pp_consumed = ifelse(citation == 'DUKE', 
+                                     (orig_content_avg_RFadj*0.01) * (Ingredient_consumed_g * (10/180)), # Adjustment
+                                     (orig_content_avg_RFadj*0.01) * Ingredient_consumed_g))
 ```
 
 Replace coffee and tea values. Add pp_consumed column by multiplying amount of the polyphenol content (mg/100g multiply by 0.01 to get mg/g) by ingredient consumed (grams) to get the polyphenol amount consumed (mg).
 ```{r message = FALSE}
 ASA_FooDB_updated = ASA_FooDB_adj %>%
-  dplyr::filter(!food_id %in% tea_food_ids) %>% #take out old values
-  dplyr::filter(!food_id %in% coffee_food_ids) %>% #take out old values
-  dplyr::filter(!FoodCode %in% nectar_ids) %>% #take out old values
-  dplyr::mutate(pp_consumed = (orig_content_avg_RFadj*0.01) * 
+  filter(!food_id %in% tea_food_ids) %>% #take out old values
+  filter(!food_id %in% coffee_food_ids) %>% #take out old values
+  filter(!FoodCode %in% nectar_ids) %>% #take out old values
+  mutate(pp_consumed = (orig_content_avg_RFadj*0.01) * 
                   Ingredient_consumed_g) %>%
-  dplyr::full_join(tea) %>% #add new values
-  dplyr:: full_join(coffee) %>% #add new values %>%
-  dplyr:: full_join(nectar) %>%
-  dplyr::select(-Modified) %>%
-  dplyr::relocate(pp_consumed, orig_content_avg_RFadj, .before = orig_unit)
+  full_join(tea) %>% #add new values
+  full_join(coffee) %>% #add new values %>%
+  full_join(nectar) %>%
+  select(-Modified) %>%
+  relocate(pp_consumed, orig_content_avg_RFadj, .before = orig_unit)
 ```
 
 ```{r EXPORT}
 write.csv(ASA_FooDB_updated, 'FooDB/FooDB_phenol_content_ASAmerged.csv.bz2', 
           row.names = FALSE)
 ```
-
 
 Since we created orig_content_avg, The file needs additional cleaning to remove the additional polyphenol entries 
 

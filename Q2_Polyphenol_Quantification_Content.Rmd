@@ -1,41 +1,71 @@
 ---
-title: "Q2_Polyphenol_Quantification_Content"
+title: "E2_Polyphenol_Estimation_Content"
 author: "Stephanie Wilson"
 date: "`r Sys.Date()`"
 output: html_document
 ---
 
 
-# Polyphenol Quantification
+# Polyphenol Estimation
 ## Step 2: Preparation of Phenol Content File
 
 __Required Input Files__  
-  - *FooDB_phenols.csv* - output from Q1_Polyphenol_Quantification_FooDB_PhenolID.Rmd
+  - *FooDB_phenols.csv* - output from E1_Polyphenol_Estimation_FooDB_PhenolID.Rmd
   - *Food_V2_descripcleaned.csv* - output from 02_FooDB_TextProcessing.ipynb
   - *Content.csv.* - FooDB data (version 1) downloaded Sept 2022 from FooDB.ca/downloads
   - *Content_updated.csv* - output from 01_FooDB_FooDBCleaning.ipynb
   - *Food_updated.csv* - 01_FooDB_FooDBCleaning.ipynb
+  - *FooDB/milk_scrape_polyphenols.csv* - Milk polyphenols from E1B_Polyphenol_Estimation_FooDB_PhenolID_Milk.Rmd
+  - *yogurt_soy_correction.csv* - output form E1C_Yogurt_Correction.Rmd
 
 __Information__  
 This script prepares the Content file with cleaned text descriptions and merges this information with our phenol list. The output is ready to be matched with dietary recall data.
 
   1) Replace Content_updated food descriptions with cleaned text descriptions
   2) Add endogenous compounds back into Content_updated
-  3) Merge phenol compound data with Content_updated with cleaned food descriptions
+  3) Consolidate Changes from Internal Milk Misclassifications
+  4) Merge phenol compound data with Content_updated with cleaned food descriptions
      - Important Note: Content file needs to be filtered for source_type=='Compounds'
-  4) Unit Check    
+  5) Unit Check    
 
 __Outputs__  
   - *FooDB_phenol_premerge.csv.bz2* - Pre-averaged content values for retention factor matching
+  - *FooDB_polyphenols_V2.csv* - List of Polyphenols within FooDB.
   
 ```{r Load packages, message=FALSE}
 library(tidyverse)
 ```
 
 
+Load in Correction Files
+```{r}
+# Contains orig_food_common_name to take out from food_id 634
+yogurt = read.csv('FooDB/yogurt_soy_correction.csv')
+
+# Milk specific polyphenols
+Milk = read.csv('FooDB/milk_scrape_polyphenols.csv') %>%
+  rename('compound_public_id' = 1,
+         'compound_name' = 2,
+         'orig_min' = 'low_end',
+         'orig_max' = 'high_end',
+         'orig_content' = 'Average',
+         'orig_unit' = 'units') %>%
+  select(c(compound_public_id, compound_name, orig_min, orig_max, orig_content, 
+           orig_unit, citation)) %>%
+  mutate(source_type = 'Compounds', 
+         food_id = 632,
+         food_name = 'Milk (Cow)',
+         food_public_id = 'FOOD00618')
+```
+
+
 ```{r Load data}
 # Load FooDB phenols
-FooDB_phenols = read.csv('FooDB/FooDB_phenols.csv', header=TRUE)
+FooDB_phenols_raw = read.csv('FooDB/FooDB_phenols.csv', header=TRUE) %>%
+  rename('smiles' = 'cas_number',
+         'inchi' = 'moldb_inchikey',
+         'mono_mass' = 'moldb_inchi',
+         'inchikey' = 'moldb_smiles')
 
 # Load cleaned text FooDB descriptions
 Food_V2 = read.csv("FooDB/Food_V2_descripcleaned.csv", header=TRUE) %>%
@@ -44,9 +74,15 @@ Food_V2 = read.csv("FooDB/Food_V2_descripcleaned.csv", header=TRUE) %>%
 # Load FooDB data
 # Original Content File needed for adding endogenous compounds back in
 Content_updated = read.csv('FooDB/Content_updated.csv.bz2', header=TRUE)
+
 Content = read.csv("FoodB/Content.csv.bz2", header=TRUE) %>% 
   filter(!orig_food_common_name == 'Lipid from Arabidopsis (PathBank)') %>%
   filter(!food_id == 16420)
+
+# Load FooDB data, accessed September 2022
+# Use Content.csv to assess all possible matches
+Compound = read.csv('FooDB/Compound.csv.bz2') %>%
+  select(c(id, public_id))
 
 #Load updated FooDB Food ID's
 Food = read.csv('FooDB/Food_updated.csv') %>%
@@ -55,7 +91,6 @@ Food = read.csv('FooDB/Food_updated.csv') %>%
          'food_name' = 'name',
          'food_public_id' = 'public_id')
 ```
-
 
 ### 1) Replace food descriptions with cleaned text descriptions
 ```{r}
@@ -73,8 +108,11 @@ Content_updated = Content_updated %>%
 
 
 ### 2) Add endogenous compounds back into Contents_updated to recreate Content file
-We had previously removed Pathbank and endogenous compound (HMDB) entries from Content.csv in in 01_FooDB_FooDBCleaning.ipynb. Based on our exploration of phenol matches in Q1_Polyphenol_Quantification_FooDB_PhenolID.Rmd, we know that none of the 3080 polyphenolic compounds have entries related to Pathbank. However, several polyphenolic compounds had an endogenous description, so we need to add endogenous compounds back in. We will also give them a food id, 9914.
+We had previously removed Pathbank and endogenous compound (HMDB) entries from Content.csv in in 01_FooDB_FooDBCleaning.ipynb. Based on our exploration of phenol matches in E1_Polyphenol_Estimation_FooDB_PhenolID.Rmd, we know that none of the 3063 polyphenolic compounds have entries related to Pathbank. However, several polyphenolic compounds had an endogenous description, so we need to add endogenous compounds back in. We will also give them a food id, 9914.
 
+Content first needs to be filtered for source_type=='Compounds' which is where you'll find polyphenols. 
+  - source_type == 'Nutrients' retrieves 'classical nutrients' in dietary reporting
+  
 ```{r message=FALSE}
 #Identify the Endogenous Compounds
 Endogenous = anti_join(Content, Content_updated, by = 'id') %>% 
@@ -82,39 +120,85 @@ Endogenous = anti_join(Content, Content_updated, by = 'id') %>%
 
 # Add endogenous back into Content_updated
 # We will keep out items from HMDB
-Content = full_join(Content_updated, Endogenous)
-```
-
-
-### 3) Merge phenol compound data with Content Data with cleaned food descriptions
-
-Content first needs to be filtered for source_type=='Compounds' which is where you'll find polyphenols. 
-  - source_type == 'Nutrients' retrieves 'classical nutrients' in dietary reporting
+Content_filtered  = full_join(Content_updated, Endogenous) %>% 
+  filter(source_type == 'Compound') %>%
+  left_join(Compound, by = c('source_id' = 'id')) %>%
+  relocate(public_id, .after = id) %>%
   
-```{r Merge phenol Compound data with Content Data}
-#Filter for compounds
-Content_filtered = Content %>% 
-  filter(source_type == 'Compound')
+  # Remove soy yogurt entries
+  filter(!id %in% yogurt$id)
 ```
+
+
+### 3) Consolidate Changes from Internal Milk Misclassifications
+
+Create modification lists
+```{r}
+#What compounds did we not previously detect before? We need to add this to our polyphenol list
+add = anti_join(Milk, FooDB_phenols_raw, by = c('compound_public_id' ='public_id'))
+
+# Three compounds in milk were found to not match 
+remove = data.frame(public_id = c('FDB097404', 'FDB097405', 'FDB097408'))
+```
+
+
+```{r}
+# Here are some additional compounds previously detected that did not match with their structure
+checklist = data.frame(public_id = c(
+    "FDB097215", "FDB097260", "FDB097304", "FDB097323", "FDB097324",
+    "FDB097334", "FDB097343", "FDB097345", "FDB097346", "FDB097349",
+    "FDB097353", "FDB097354", "FDB097378", "FDB097381", "FDB097385"))
+
+check = checklist %>% 
+  left_join(FooDB_phenols_raw, by = 'public_id')  %>%
+  left_join(Content_filtered, by = 'public_id') %>%
+  
+  #Let's look at the foods that are not milk
+  filter(!food_id ==632)
+
+# What are the unique food ids 
+unique(check$public_id)
+```
+
+```{r}
+# Are any of these missing quantification data? 
+table(is.na(check$orig_content))
+
+#Awesome. Let's go ahead and add these compounds to our removal list
+remove_update = remove %>%
+  full_join(checklist)
+
+add_v2 = add %>%
+  rename('name' = 'compound_name',
+         'public_id' = 'compound_public_id') %>%
+  select(name, public_id)
+
+# Update the full polyphenol list
+FooDB_phenols = FooDB_phenols_raw %>%
+  full_join(add_v2) %>%
+  filter(!public_id %in% remove_update$public_id)
+
+write.csv(FooDB_phenols, 'FooDB/FooDB_polyphenols_V2.csv', row.names = FALSE)
+```
+
+### 4) Merge phenol compound data with Content Data with cleaned food descriptions
 
 Let us merge and clean our file for export. 
 ```{r}
 FooDB_phenol_content = Content_filtered %>%
-  filter(source_id %in% FooDB_phenols$id) %>%
-  left_join(FooDB_phenols, by = c('source_id' = 'id')) %>%
+  filter(public_id %in% FooDB_phenols$public_id) %>%
+  left_join(FooDB_phenols[-1], by = 'public_id') %>%
   left_join(Food, by = 'food_id') %>%
   relocate('food_name', 'orig_food_part', 'food_public_id', .after = 'food_id') %>%
-  select(-c(state, moldb_iupac, cas_number, description, moldb_inchi,
-            moldb_inchikey, moldb_smiles, moldb_mono_mass, kingdom, klass, 
-            superklass, subklass, annotation_quality,
-            source_type)) %>% #remove Compound columns
-  select(-c(id, orig_food_scientific_name,  
-            orig_citation, creator_id, updater_id, 
-            created_at, updated_at,  orig_unit_expression)) %>% #Remove Content columns
-  dplyr::rename('compound_id' = 'source_id',
+  #remove columns for brevity
+  select(-c(moldb_iupac:subklass, id, orig_food_scientific_name,  
+            orig_citation, creator_id, updater_id, created_at, 
+            updated_at,  orig_unit_expression)) %>% 
+  rename('compound_id' = 'source_id',
          'compound_name' = 'name',
          'compound_public_id' = 'public_id') %>%
-  relocate(compound_id, compound_public_id, compound_name, .before = orig_content) %>%
+  relocate(compound_id, compound_public_id, compound_name, 
+           .before = orig_content) %>%
   arrange(food_id)
 ```
 
@@ -132,16 +216,32 @@ FooDB_phenol_content = FooDB_phenol_content %>%
   add_row(soy)
 ```
 
-
-### 4) Unit Check
+Let us add in the corrected milk content adjustments.
 ```{r}
-table(FooDB_phenol_content$orig_unit)
+FooDB_content = FooDB_phenol_content %>%
+  
+  # Take out old entries
+  filter(!food_id == 632) %>%
+  
+  #Add new entries
+  full_join(Milk)
 ```
+
+
+### 5) Unit Check
+```{r}
+table(FooDB_content$orig_unit)
+```
+
+```{r}
+FooDB_content %>% filter(orig_unit =='mg/l')
+```
+
 SW Update:  
 Manually cross-checked a random assortment of polyphenol entries with citation reference across several unit types. It appears 'orig_content' entries reflect mg/100 mg values and not units presented in orig_unit.
  - *FooDB Error*: where orig_unit == 'mg/kg', online FooDB.ca are in mg/g values but are reported as mg/100g.
   
 Let us write our current version out so we can add in retention factors in another script.
 ```{r}
-write.csv(FooDB_phenol_content, 'FooDB/FooDB_phenol_premerge.csv.bz2', row.names = FALSE)
+write.csv(FooDB_content, 'FooDB/FooDB_phenol_premerge.csv.bz2', row.names = FALSE)
 ```
