@@ -20,7 +20,8 @@ This script focuses on total polyphenol intake, specifically:
   3) Compound Class Contributors of Polyphenol Intake.
 
 __Output__. 
- - Visual and Table: Top 10 Food Contributors of Total Polyphenol intake 
+ - *Ingredient_Intake_Frequency.csv*
+ - *top_foodcontributors_table.csv*, Visual and Table: Top 10 Food Contributors of Total Polyphenol intake 
 
 ```{r Load packages, message = FALSE}
 library(tidyverse); library(Rfit); library(Hmisc); library(corrplot); library(ggpubr); library(ggrain); library(viridis); library(ggridges); library(gt)
