@@ -1,0 +1,35 @@
+---
+title: "Copy TaxaHFE Output Files"
+author: "Stephanie Wilson"
+date: "October 2023"
+output: html_document
+---
+
+#  Copy TaxaHFE Output Files
+
+__Purpose__.
+This script also copies taxaHFE output into their respective marker folders for running with dietML.
+
+__Inputs__. 
+  - taxaHFE output.csv files
+  
+__Outputs__. 
+  - Copied taxaHFE output files into dietML directories
+
+Load packages and Define Markers
+```{r}
+library(tidyverse)
+markers = c('CRP', 'LBP', 'CAL', 'MPO', 'NEO')
+```
+
+Create Pathnames for copying. 
+```{r}
+Subclinical_Inputs = data.frame(markers = markers) %>%
+  filter(!markers == 'LBP') %>%
+  mutate(origin = paste('HFE/Subclinical/', markers, '_output', '.csv', sep =''),
+         destination_folder = paste('HFE/Subclinical/', markers, '_dietML/',
+                                    basename(origin), sep =''),
+         copied = file.copy(file.path(origin), destination_folder))
+```     
+
+

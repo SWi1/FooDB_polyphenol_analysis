@@ -1,0 +1,99 @@
+---
+title: "dietML metadata File preparation"
+author: "Stephanie Wilson"
+date: "October 2023"
+output: html_document
+---
+
+#  dietML metadata file prep
+
+__Required Input Files__.                          
+  - *FL100_merged_variables.csv* - 
+  - *metadata_CRP_subclinical.txt*
+  - *metadata_fecal_subclinical.txt*
+  
+__Information__. 
+This script organizes machine learning variable metadata files and organizes and copies them into the correct directories for dietML analyses.
+
+__Output__. 
+  - metadata files in the respective dietML folders
+
+Load Packages and Data
+```{r messages = FALSE, warnings = FALSE}
+library(tidyverse)
+
+merged = read.csv('data/FL100_merged_variables.csv') %>% 
+  rename('subject_id' = 'UserName')
+```
+
+Function to write the same csv to multiple locations
+```{r}
+write_data_to_multiple_paths = function(target_locations, dataframe) {
+  
+  # Loop through each target location
+  for (location in target_locations) {
+    
+    # Generate the full file path for the current location
+    full_path = file.path(getwd(), location)
+    
+    # Write the dataframe to the current location
+    write.csv(dataframe, file = full_path, row.names = FALSE)
+  }
+}
+```
+
+
+### 1) Select and format Machine Learning Variables
+
+Select columns that are of interest to us for ML.
+  - choosing to remove bristol_num (too many NAs)
+  - choosing to remove hhincome (education can be just as an informative feature)
+  - Oct 2023 - removing HEI Components due to overlap with Yasmine's paper
+  - Oct 2023 - removing fecal pH and stool collection time
+  
+```{r}
+ML_variables = merged %>%
+  select(c(subject_id, Age:BMI, edu_level, avg_total_fiber, avg_total_PRO,
+           #hei_asa24_totalveg:hei_asa24_totalscore, fecal_ph, diff_time_hrs
+           hei_asa24_totalscore)) %>%
+  filter(!is.na(avg_total_PRO)) %>%
+  mutate(Sex = factor(Sex),
+         edu_level = factor(edu_level))
+```
+
+
+### 2) SUBCLINICAL, Continuous Inflammation Outcomes
+
+Subclinical Thresholds:
+  - CRP < 10000 ng/mL
+  - CAL < 100
+  
+```{r}
+CRP_subclinical = read.delim('HFE/metadata_CRP_subclinical.txt', 
+                             header = TRUE, sep = "\t", dec = ".") 
+GI_subclinical = read.delim('HFE/metadata_fecal_subclinical.txt', 
+                            header = TRUE, sep = "\t", dec = ".") 
+```
+
+```{r}
+CRP_subclinical_meta = ML_variables %>%
+  filter(subject_id %in% CRP_subclinical$subject_id)
+
+GI_subclinical = ML_variables %>%
+    filter(subject_id %in% GI_subclinical$subject_id) 
+```
+
+Create metadata paths
+```{r}
+CRP_sub_location = c("HFE/Subclinical/CRP_dietML/merged_blood_subclinical.csv")
+CAL_sub_location = c("HFE/Subclinical/CAL_dietML/merged_GI_subclinical.csv")
+MPO_sub_location = c("HFE/Subclinical/MPO_dietML/merged_GI_subclinical.csv")
+NEO_sub_location = c("HFE/Subclinical/NEO_dietML/merged_GI_subclinical.csv")
+```
+
+```{r}
+write_data_to_multiple_paths(dataframe = CRP_subclinical_meta, 
+                             target_locations = CRP_sub_location)
+write_data_to_multiple_paths(dataframe = GI_subclinical, target_locations = c(CAL_sub_location, MPO_sub_location, NEO_sub_location))
+```
+

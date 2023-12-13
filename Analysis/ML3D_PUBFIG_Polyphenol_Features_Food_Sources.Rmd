@@ -1,0 +1,174 @@
+---
+title: "Polyphenol Feature Food Sources"
+author: "Stephanie Wilson"
+date: "November 2023"
+output: html_document
+---
+
+# Identify Top 3 Food Sources for Top Random Forest Polyphenol Features
+
+__Summary__. 
+This script helps determine the top food contributors to top polyphenol features. Food contributors and related model information is provided in a supplementary manuscript table. 
+
+__Inputs__. 
+  - *FL100_PP_DailyAveraged.csv*, Output from A0B_Exploration.Rmd
+  - *FooDB_phenols_taxonomy.csv*, Output from A0A_Scrape_Taxonomy.Rmd
+  - *Ingredient_Intake_Frequency.csv*, Output from A2_Polyphenol_Intake_Summary.Rmd
+  - *Avg_Polyphenol_Intake_ByFood.csv*, Output from ML3_dietML_Polyphenol_Food_Intakes.Rmd
+  - *dietML_top_features.csv*, Output from ML3A_dietML_Feature_Formatting.Rmd
+  
+__Outputs__. 
+  - *dietML_topPP_features_foodsources.csv*, Has top polyphenol features and the top three food sources for each. Features most relevant to our inflammation models additionally have directionality with outcomes noted.
+
+```{r}
+library(tidyverse); library(gt); library(ggrepel)
+```
+
+
+Load Data
+```{r}
+# What are our top 10 features
+features = read.csv('output/dietML_top_features.csv') 
+tax = read.csv('FooDB/FooDB_phenols_taxonomy.csv')
+
+# Avg Polyphenol Intake Across Participants By food_id
+Intakes_Food = read.csv('output/Avg_Polyphenol_Intake_ByFood.csv')
+
+# Load food frequency data
+frequency = read.csv('output/Ingredient_Intake_Frequency.csv') %>%
+  select(-overall_avg_food_ppintake)
+
+# Polyphenol content for each compound in foods, averaged across each participant's recalls.
+content = read.csv('data/FL100_PP_DailyAveraged.csv') %>%
+  select(UserName, food_id:compound_name, mean_daily_intake_mg) %>%
+  left_join(tax) 
+```
+
+### 1) Generate Food table Data
+
+#### 1a) ALL taxonomic Higher Groupings
+```{r}
+class = features %>%
+  filter(grepl("^c_", feature)) %>%
+  mutate(taxa = sub("\\s*\\(Class\\)$", "", feature_publish))
+
+class_foods = content %>%
+  filter(klass %in% class$taxa) %>%
+  group_by(food_id, klass) %>%
+  mutate(Class_avg = mean(mean_daily_intake_mg, na.rm = TRUE)) %>%
+  select(food_id, food_name, klass, Class_avg)%>%
+  distinct(food_id, .keep_all = TRUE) %>%
+  left_join(frequency) %>%
+  ungroup() %>%
+  
+  # Remove NaNs and zeros
+  filter(complete.cases(Class_avg)) %>%
+  filter(Class_avg>0) %>%
+  # Keep more frequent foods
+  group_by(klass) %>%
+  filter(food_freq >= median(food_freq)) %>%
+  arrange(desc(Class_avg)) %>%
+  slice_head(n = 3) %>%
+  
+  # Format for table
+  summarise(compiled_foods = paste(food_name, collapse = ', ')) %>%
+  mutate(taxon = paste(klass, '(Class)', sep =' ')) %>%
+  select(-klass) %>%
+  relocate(taxon, 1)
+```
+
+```{r}
+superclass =features %>%
+  filter(grepl("^p_", feature)) %>%
+  mutate(taxa = sub("\\s*\\(Superclass\\)$", "", feature_publish))
+
+sp_foods = content %>%
+  filter(superklass %in% superclass$taxa) %>%
+  group_by(food_id, superklass) %>%
+  mutate(superklass_avg = mean(mean_daily_intake_mg, na.rm = TRUE)) %>%
+  select(food_id, food_name, superklass, superklass_avg)%>%
+  distinct(food_id, .keep_all = TRUE) %>%
+  left_join(frequency)  %>%
+  ungroup() %>%
+   # Remove NaNs and zeros
+  filter(complete.cases(superklass_avg)) %>%
+  filter(superklass_avg>0) %>%
+  # Keep more frequent foods
+  filter(food_freq >= median(food_freq)) %>%
+  arrange(desc(superklass_avg)) %>%
+  group_by(superklass) %>%
+  slice_head(n = 3) %>%
+
+  # Format for table
+  summarise(compiled_foods = paste(food_name, collapse = ', ')) %>%
+  mutate(taxon = paste(superklass, '(Superclass)', sep =' ')) %>%
+  select(-superklass) %>%
+  relocate(taxon, 1)
+```
+
+#### 1b) ALL COMPOUNDS in our ML model
+```{r}
+ALL = Intakes_Food %>%
+
+  left_join(frequency) %>%
+  
+  # Get the cohort average for each food
+  group_by(food_id, compound_public_id) %>%
+  mutate(AVERAGE = mean(Avg_intake, na.rm = TRUE)) %>%
+  distinct(food_id, .keep_all = TRUE) %>%
+  select(compound_name, food_name, food_freq, klass, AVERAGE) %>%
+  arrange(desc(AVERAGE)) %>%
+  ungroup()
+```
+
+```{r}
+compound_foods = ALL %>%
+  filter(!AVERAGE == 0) %>%
+  group_by(compound_name) %>%
+  filter(food_freq >= median(food_freq)) %>%
+  slice_head(n = 3) %>%
+  summarise(compiled_foods = paste(food_name, collapse = ', ')) %>%
+  rename(taxon = 1)
+```
+
+#### 1c) Merge higher order taxa with compounds
+```{r}
+merged = full_join(sp_foods, class_foods) %>%
+  full_join(compound_foods)
+```
+
+
+### 2) Compiled Markers
+
+Create Dataframe of polyphenol features and their associated directionality with the inflammation outcome.
+```{r}
+feature_minimal = features %>%
+  
+  select(feature_publish, marker, Direction) %>%
+  filter(feature_publish %in% merged$taxon) %>%
+  mutate(Direction = ifelse(Direction=="Positive", '(+)', '(-)'),
+         marker_label = paste(marker, Direction, sep = ' ')) %>%
+  select(-c(marker, Direction)) %>%
+  group_by(feature_publish) %>%
+  summarise(compiled_marker = paste(marker_label, collapse = ', ')) %>%
+  rename('taxon' = 1)
+```
+
+Create Table
+```{r}
+#Add food intake information with feature information
+table_data = merged %>%
+  
+  left_join(feature_minimal) %>%
+  rename('Taxon or Compound' = 1,
+         'Associated Markers (Direction)' = 3,
+         'Common Food Sources' = 2)
+
+write.csv(table_data, 'output/dietML_topPP_features_foodsources.csv', row.names =FALSE)
+
+gt_tbl = gt(table_data)
+gt_tbl
+
+gtsave(filename = 'images/ML_polyphenol_food_sources.png', 
+       data = gt_tbl)
+```

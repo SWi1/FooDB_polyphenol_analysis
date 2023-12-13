@@ -1,0 +1,206 @@
+---
+title: "Pooled taxaHFE Features"
+author: "Stephanie Wilson"
+date: "October 2023"
+output: html_document
+---
+
+# Aggregate and format names of taxaHFE-selected features
+
+This script compiles the selected polyphenolic features from taxaHFE. 
+
+__Inputs__. 
+  - taxaHFE output.csv files
+  - Taxonomy File, FooDB_phenols_taxonomy.csv
+  
+__Outputs__. 
+  - HFE_pooled_selected_features_longform.csv
+  - HFE_pooled_selected_features_compiled.csv
+
+```{r message = FALSE}
+library(tidyverse); library(stringdist)
+source('functions/find_best_matches_taxonomy.R')
+```
+
+
+What were the input features for the Full Classifier?
+```{r}
+Inputs = data.frame(markers = c('CRP', 'LBP', 'CAL', 'MPO', 'NEO')) %>%
+  mutate(path_name = paste('HFE/Subclinical/', markers, '_output', '.csv', 
+                           sep ='')) %>%
+  filter(!markers=='LBP')
+
+taxonomy = taxonomy = read.csv('FooDB/FooDB_phenols_taxonomy.csv') %>%
+  select(c(compound_public_id, kingdom:klass, compound_name)) %>%
+  mutate(klass = ifelse(klass =='', paste('Unclassified', superklass), klass))
+```
+
+### 1) Read in each HFE output file, extract the column names, and compile into joint dataframe.
+```{r}
+# Create a list to store the dataframes
+all_dataframes = data.frame()
+
+# Loop through each file path
+for (i in Inputs$path_name) {
+  # Read the CSV file
+  current_dataframe = read.csv(i, header = TRUE, sep = ",")
+
+  # Check if the dataframe has any rows
+  if (nrow(current_dataframe) > 0) {
+    # Get the column names
+    columns = names(current_dataframe)
+    
+    # Remove first two columns
+    columns = columns[-c(1:2)]
+    
+    # Extract the filename without extension
+    marker = gsub("\\.csv$", "", basename(i))
+    marker = gsub('_quartile_output', '', marker)
+    
+    # Create a new dataframe with the extracted column names as rows
+    columns_df = data.frame(features = columns, marker = marker)
+    
+    # Append the current dataframe to the list
+    all_dataframes = rbind(columns_df, all_dataframes)
+  }
+}
+
+```
+
+
+### 2) Clean the Taxonomy Key
+
+```{r}
+#Define a mapping of Greek letters and their replacements
+greek_mapping = c("α" = "alpha", "β" = "beta", "γ" = "gamma", "δ" = "delta",
+                   "ε" = "epsilon", "ζ" = "zeta", "η" = "eta", "θ" = "theta",
+                   "ι" = "iota", "κ" = "kappa", "λ" = "lambda", "μ" = "mu",
+                   "ν" = "nu", "ξ" = "xi", "ο" = "omicron", "π" = "pi",
+                   "ρ" = "rho", "σ" = "sigma", "τ" = "tau", "υ" = "upsilon",
+                   "φ" = "phi", "χ" = "chi", "ψ" = "psi", "ω" = "omega")
+
+# Function to replace Greek letters using the mapping
+replace_greek = function(match) {
+  greek_mapping[[match]]
+}
+```
+
+Add front tags to match to output
+```{r}
+taxonomy_format = taxonomy %>%
+  mutate(
+    
+    #Add taxon indicator
+    superklass = sub("^", "p_", superklass),
+    klass = sub("^", "c_", klass),
+    species = sub("^", "s_", compound_name),
+    
+    #Remove alphanumeric characters
+    superklass = str_replace_all(superklass, pattern = "[^_|[:alnum:]]", replacement = ""),
+    klass = str_replace_all(klass, pattern = "[^_|[:alnum:]]", replacement = ""),
+    species = str_replace_all(species, pattern = "[^_|[:alnum:]]", replacement = ""),
+    
+    #Replace Greek letters with their written out form
+    superklass = str_replace_all(superklass, pattern = "[α-ωΑ-Ω]", replacement = replace_greek),
+    klass = str_replace_all(klass, pattern = "[α-ωΑ-Ω]", replacement = replace_greek),
+    species = str_replace_all(species, pattern = "[α-ωΑ-Ω]", replacement = replace_greek),
+    
+    #Lowercase
+    superklass = str_to_lower(superklass),
+    klass = str_to_lower(klass),
+    species = str_to_lower(species),
+    
+    #replaces all "|" characters with underscores.
+    superklass = gsub("\\|", "_", superklass),
+    klass = gsub("\\|", "_", klass),
+    species = gsub("\\|", "_", species)
+  )
+```
+
+### Find the best match
+
+Separate based on tags first.
+```{r}
+phylum = all_dataframes[grepl("^p_", all_dataframes$features), ]
+class = all_dataframes[grepl("^c_", all_dataframes$features), ]
+species = all_dataframes[grepl("^s_", all_dataframes$features), ]
+```
+
+Create taxonomy link
+```{r}
+taxonomy_links = left_join(taxonomy, taxonomy_format, by = 'compound_public_id')
+```
+
+Run the search, and link to it's formatted taxonomic name. 
+Class
+```{r}
+best_matches_class =  find_best_matches(source_dataframe = class, target_dataframe = taxonomy_format, source_column = "features", target_column = "klass") 
+
+class_format = taxonomy_links %>%
+  select(c(klass.x, klass.y)) %>%
+  rename('best_match' = 'klass.y',
+         'formatted_name' = 'klass.x') %>%
+  distinct(best_match, .keep_all = TRUE) %>%
+  right_join(best_matches_class) %>%
+  mutate(level = 'Class')
+```
+
+Phylum
+```{r}
+best_matches_phylum =  find_best_matches(source_dataframe = phylum, target_dataframe = taxonomy_format, source_column = "features", target_column = "superklass")
+
+phylum_format = taxonomy_links %>%
+  select(c(superklass.x, superklass.y)) %>%
+  rename('best_match' = 'superklass.y',
+         'formatted_name' = 'superklass.x') %>%
+  distinct(best_match, .keep_all = TRUE) %>%
+  right_join(best_matches_phylum) %>%
+  mutate(level = 'Phylum')
+```
+Species or Compound Name
+```{r}
+best_matches_compound =  find_best_matches(species, taxonomy_format, "features", "species")
+
+compound_format = taxonomy_links %>%
+  select(c(compound_name.x, species)) %>%
+  rename('best_match' = 'species',
+         'formatted_name' = 'compound_name.x') %>%
+  right_join(best_matches_compound) %>%
+  mutate(level = 'Compound')
+```
+
+### Formatting
+
+Combine all of the outputs
+```{r}
+# Add compound IDS
+compound_ids = taxonomy %>% select(compound_public_id, compound_name)
+
+# Combine all outputs, and merge with the Marker data
+best_matches = full_join(phylum_format, class_format) %>%
+  full_join(compound_format) %>%
+  select(c(features, formatted_name, marker, level))%>%
+  relocate(marker, 1) %>%
+  left_join(compound_ids, by = c('formatted_name' = 'compound_name')) %>%
+  
+  #Assign taxonomic order
+  mutate(level = factor(level, levels = c('Phylum', 'Class', 'Compound'))) %>%
+  
+  # Arrange by marker and taxonomi level
+  arrange(marker, level)
+
+write.csv(best_matches, 'output/HFE_pooled_selected_features_longform.csv', row.names = FALSE)
+```
+
+
+Condensed Form
+```{r}
+compiled_text = best_matches %>%
+   mutate(label_with_ids = ifelse(level == 'Compound',
+    paste(formatted_name, ' (', compound_public_id, ')', sep = ''), formatted_name)) %>%
+  group_by(marker) %>%
+  summarise(compiled_label = paste(label_with_ids, collapse = ', '))
+
+write.csv(compiled_text, 'output/HFE_pooled_selected_features_compiled.csv', row.names = FALSE)
+```
+
