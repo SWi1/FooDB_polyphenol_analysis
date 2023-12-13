@@ -1,0 +1,398 @@
+---
+title: "E3_Polyphenol_Estimation_RF"
+author: "Stephanie Wilson"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+#  Polyphenol Estimation
+## Step 03: Adding in Retention Factors
+
+__Required Input Files__.                          
+
+  - *FooDB_phenol_premerge.csv.bz2* - Output from E2_Polyphenol_Estimation_Content.Rmd
+  - *PhenolExplorer-RFTable_20190204.xlsx* - Phenol Explorer Retention Factors from Version 3.6
+  - *foods-classification.csv* - Phenol Explorer Food Classification from Version 3.6
+  - *compounds-classification_20230504.csv* - Phenol Explorer Compound taxonomic classifications from Version 3.6
+
+__Information__.  
+FooDB maintains original data from source material; thus, Phenol Explorer entries can be obtained out of the FooDB Content file. Using source ids, this script cross-references the FooDB/PhenolExplorer polyphenol content (from Q2) and matches it up with the retention factor file from Phenol Explorer. 
+
+In the script development and testing, it was discovered that there are incorrect source food names and ids within FooDB. These errors were manually reviewed and corrected before matching of retention factors. 
+
+__Output__. 
+  - *PhenolExplorer_source_id_namecheck.csv* - Phenol Explorer Name check for manual review
+  - *FooDB_PE_RF.csv* - contains FooDB/Phenol Explorer matches with retention factor data. Also includes those foods that did not match.
+  
+Load libraries for data reading and manipulation
+```{r message=FALSE}
+# Load libraries for data reading and manipulation
+library(tidyverse); library(readxl); library(stringr); library(stringdist)
+
+source('Functions/sim_score_function.R')
+```
+
+Load Data
+```{r}
+#Content and Compounds have been merged, but the final content values have not been established. 
+foodb = read.csv('FooDB/FooDB_phenol_premerge.csv.bz2') %>%
+  mutate(citation = factor(citation))
+
+#Retention Factor Data
+rf = read_xlsx('FooDB/PhenolExplorer/PhenolExplorer-RFTable_20190204.xlsx', sheet = 1) %>%
+  dplyr::rename('orig_source_id' = 'compound_id') %>%
+  mutate(food_name = str_to_lower(food_name),
+         food_name = gsub("[[:punct:][:blank:]]+", " ", food_name))
+
+#Phenol Explorer compound taxonomy
+tax = read.csv('FooDB/PhenolExplorer/compounds-classification_20230504.csv')
+
+#For name checks
+pe_food = read.csv('FooDB/PhenolExplorer/foods-classification.csv') %>%
+  select(-c(class, subclass))
+```
+
+Review of RF Data
+```{r}
+message('Number of unique foods in Retention Factor File: ',
+  length(unique(rf$id_correction)),
+  '\nNumber of unique compounds in Retention Factor File: ',
+  length(unique(rf$orig_source_id)))
+```
+
+**Important** rf compound_id's that are 2 and 731 can be pulled out in a second script. These retention factors can be applied across multiple compounds.
+  - 731 = Total Polyphenols
+  - 2 = Total anthocyanins
+
+
+### 1) Pull out PhenolExplorer entries from FooDB 
+```{r warning = FALSE}
+phenolexplorer = foodb %>%
+  filter(citation == 'PHENOL EXPLORER') %>%
+  mutate(orig_food_id = as.numeric(orig_food_id),
+         orig_source_id = as.numeric(orig_source_id))
+```
+
+Assess output from phenol explorer
+```{r}
+message('Number of unique Phenol Explorer food ids: ',
+  length(unique(phenolexplorer$orig_food_id)),
+  '\nNumber of unique Phenol Explorer compound ids: ',
+  length(unique(phenolexplorer$orig_source_id)),
+  '\nNumber of unique FooDB food ids: ', 
+  length(unique(phenolexplorer$food_id)),
+  '\nNumber of unique FooDB compound ids: ', 
+  length(unique(phenolexplorer$compound_id)))
+```
+
+
+
+### 2) Check the food names match up before application of retention factors.
+```{r}
+namecheck = phenolexplorer %>%
+  select(orig_food_id, orig_food_common_name) %>%
+  distinct(orig_food_id, .keep_all = TRUE) %>%
+  arrange(orig_food_id) %>%
+  left_join(pe_food, by = c('orig_food_id' = 'food_id'), keep = TRUE) 
+
+#Assess similarity scores
+namecheck$similarity = stringsim(namecheck$orig_food_common_name, 
+                                 namecheck$food_name, method = 'cosine')
+
+#Export for Manual Review
+write.csv(namecheck, 'FooDB/PhenolExplorer_source_id_namecheck.csv', row.names = FALSE)
+```
+
+
+**Important**: It was discovered using text similarity scores that source id and source food names within FooDB for Phenol Explorer were largely incorrect. 
+
+**External Action**: Perform Manual Review, id entry, Load Data Back in, Reassess
+
+```{r}
+namecheck_review = read.csv('FooDB/PhenolExplorer_source_id_namecheck_entered.csv') %>%
+  left_join(pe_food, by = c('id_correction' = 'food_id')) %>%
+  dplyr::rename('food_correction' = 'food_name.y') %>%
+  mutate(food_correction = str_to_lower(food_correction))
+
+namecheck_review$similarity2 = stringsim(
+  namecheck_review$orig_food_common_name,
+  namecheck_review$food_correction,
+  method = 'cosine')
+```
+
+Our similarity scores have improved across the board. Let's replace this data in the phenol explorer data frame.
+
+But first, let us check a few entries to see if the content values correspond to the food name and not the food id.
+
+```{r}
+strawberry = phenolexplorer %>% filter(orig_food_id ==70)
+cauliflower = phenolexplorer %>% filter(orig_food_id ==265)
+```
+
+
+These polyphenol content entries match what is on phenol explorer online, indicating it was just the ids that were off.
+
+```{r}
+#file for merger
+namecheck_final = namecheck_review %>%
+  select(c(orig_food_id, id_correction, food_correction))
+
+#Let us update our rf id name for merging
+rf = rf %>% 
+  rename('id_correction' = 'food_id')
+
+#Update and Merge RF
+phenolexplorer_updated = phenolexplorer %>%
+  left_join(namecheck_final, by = 'orig_food_id') %>%
+  relocate(c(id_correction, food_correction), 
+           .after = orig_food_common_name) %>%
+  select(-c(orig_food_id, orig_food_common_name)) %>%
+  left_join(rf, by = c('id_correction', 'orig_source_id'))
+```
+
+
+### 3) Pull out Compounds that were a direct match with source material. 
+```{r}
+hasRF = phenolexplorer_updated %>%
+  filter(!is.na(mean_rf)) %>%
+  mutate(original_PE_comp_id = orig_source_id)
+
+message('Number of unique Phenol Explorer food ids in FooDB WITH rf: ',
+  length(unique(hasRF$id_correction)),
+  
+  '\nNumber of unique Phenol Explorer compound ids in FooDB WITH rf: ',
+  length(unique(hasRF$orig_source_id)))
+```
+
+```{r}
+noRF = phenolexplorer_updated %>%
+  filter(is.na(mean_rf)) 
+
+message('Number of unique Phenol Explorer food ids W/O rf: ',
+  length(unique(noRF$id_correction)),
+  
+  '\nNumber of unique Phenol Explorer compound ids W/O rf: ',
+  length(unique(noRF$orig_source_id)))
+```
+
+
+
+### 4) Identify Anthocyanins from PE entries in FooDB, and merge retention factor for matching foods
+```{r}
+#Anthocyanins in Phenol Explorer (Original Source)
+anthocyanins = tax %>%
+  filter(subclass == 'Anthocyanins')
+
+# Retention factors for total Anthocyanins
+foods2 = rf %>% 
+  filter(orig_source_id ==2) %>%
+  select(-c(min_rf:pubmed_ids))
+```
+
+
+```{r}
+# Anthocyanins from PE in FooDB without RF, 
+# candidates for applying total anthocyanin retention factor
+PEanthocyanin = noRF %>%
+  filter(orig_source_id %in% anthocyanins$compound_id) %>%
+  select(-c(food_name.y:pubmed_ids))
+```
+
+
+Merge anthocyanins with retention factor data
+```{r}
+foods2match = PEanthocyanin %>%
+  filter(id_correction %in% foods2$id_correction) %>% 
+  left_join(foods2, by = 'id_correction') %>%
+  select(c(food_id, food_name.x, food_public_id, id_correction,
+           food_correction, handling_process, orig_source_id.x,
+           compound_name.x, orig_source_id.y, compound_id,
+           compound_public_id, compound_name, experimental_method_group,
+           mean_rf, preparation_type, food_V2_ID, orig_content, orig_min,
+           orig_max, orig_unit, citation, citation_type, orig_method,
+           standard_content, export)) %>%
+  select(-c(orig_source_id.y, compound_name)) %>%
+  dplyr::rename('compound_name' = 'compound_name.x',
+         'orig_source_id' = 'orig_source_id.x',
+         'food_name' = 'food_name.x') %>%
+  mutate(original_PE_comp_id = 2)
+```
+
+
+```{r}
+message('Number of unique Phenol Explorer food ids: ',
+  length(unique(foods2match$id_correction)),
+  '\nNumber of unique Phenol Explorer compound ids: ',
+  length(unique(foods2match$orig_source_id)),
+  '\nNumber of unique FooDB food ids: ',
+  length(unique(foods2match$food_id)),
+  '\nNumber of unique FooDB compound ids: ',
+  length(unique(foods2match$compound_id)))
+```
+
+
+### 5) Identify PhenolExplorer/FooDB foods in RF file compound id = 731
+```{r}
+#Retention factor data corresponding to 'Total Polyphenols' compound classification
+foods731 =  rf %>% 
+  filter(orig_source_id == 731) %>%
+  select(-c(min_rf:pubmed_ids)) 
+
+# Isolate foods that have a total polyphenol RF, RF will be applied across all polyphenols for that food. 
+foods731match = noRF %>%
+  select(-c(food_name.y:pubmed_ids)) %>%
+  left_join(foods731, by = c('id_correction')) %>%
+  select(c(food_id, food_name.x, food_public_id, id_correction,
+           food_correction, handling_process, orig_source_id.x,
+           compound_name.x, orig_source_id.y, compound_id,
+           compound_public_id, compound_name, experimental_method_group,
+           mean_rf,  preparation_type, food_V2_ID, orig_content, orig_min,
+           orig_max, orig_unit, citation, citation_type, orig_method,
+           standard_content, export)) %>%
+  select(-c(orig_source_id.y, compound_name)) %>%
+  dplyr::rename('compound_name' = 'compound_name.x',
+         'orig_source_id' = 'orig_source_id.x',
+         'food_name' = 'food_name.x') %>%
+  filter(!is.na(mean_rf)) %>%
+  mutate(original_PE_comp_id = 731)
+```
+
+```{r}
+message('Number of unique Phenol Explorer food ids: ',
+  length(unique(foods731match$id_correction)),
+  
+  '\nNumber of unique Phenol Explorer compound ids: ',
+  length(unique(foods731match$orig_source_id)),
+  
+  '\nNumber of unique FooDB food ids: ',
+  length(unique(foods731match$food_id)),
+  
+  '\nNumber of unique FooDB compound ids: ',
+  length(unique(foods731match$compound_id)))
+```
+
+
+There is some food/compound overlap between foods2match and foods731match (ie. We have RFs for total polyphenols and RFs for anthocyanins for the same food/compound combos).  Where anthocyanin data is present, we will allow that to take precedence over total polyphenols. 
+
+```{r}
+#Identify the overlap
+overlap = foods731match %>%
+  filter(id_correction %in% foods2match$id_correction & #ID what's shared between 
+          orig_source_id %in% foods2match$orig_source_id) %>%
+  filter(handling_process == 'jam making') #our hits in foods2 were only for jam making.
+
+#Remove overlap from foods 731 and replace with foods 2
+
+foods.2.731 = foods731match %>%
+  anti_join(overlap) %>% #remove the overlap, aka total polyphenol data
+  full_join(foods2match) #replace with foods2 and specifically anthocyanin data
+```
+
+But wait, is there any overlap with our direct RF hits?
+
+```{r}
+overlap.check2 = hasRF %>%
+  left_join(foods.2.731, by = c('id_correction', 'orig_source_id'))
+
+summary(overlap.check2$mean_rf.y) 
+```
+
+Great, we can see that there were not similarities between the direct hits (hasRF) and what we developed for compound ids 2 and 731 (foods.2.731). This means we can prep hasRF for a full join with foods.2.731.
+
+**Formatting unaggregated Retention Factors**
+At this point we can remove the correction terminology from id and food
+```{r}
+hasRF.updated = hasRF %>%  
+  select(c(food_id, food_name.x, food_public_id, id_correction, 
+           food_correction, handling_process, orig_source_id, 
+           compound_id, compound_public_id, compound_name.x, 
+           experimental_method_group, mean_rf, original_PE_comp_id, 
+           preparation_type, food_V2_ID, orig_content, orig_min,
+           orig_max, orig_unit, citation, citation_type, orig_method,
+           standard_content, export)) %>%
+  dplyr::rename('compound_name' = 'compound_name.x',
+         'food_name' = 'food_name.x') %>%
+  full_join(foods.2.731) %>%
+  select(-c(orig_method, original_PE_comp_id)) %>%
+  dplyr::rename('orig_food_id' = 'id_correction',
+         'orig_food_common_name' = 'food_correction',
+         'RF_method' = 'experimental_method_group') 
+```
+
+Add the noRF data in.
+```{r}
+semifinal.RF = noRF %>%
+  dplyr::rename('compound_name' = 'compound_name.x',
+         'food_name' = 'food_name.x',
+         'orig_food_id' = 'id_correction',
+         'orig_food_common_name' = 'food_correction',
+         'RF_method' = 'experimental_method_group') %>%
+  select(colnames(hasRF.updated)) %>%
+  full_join(hasRF.updated) %>%
+  arrange(food_id, compound_id, orig_content)
+
+message('Number of unique foods in FooDB content (FooDB): ',
+  length(unique(noRF$food_id)),
+  
+  '\nNumber of unique compounds in FooDB content (FooDB): ',
+  length(unique(noRF$compound_id)),
+  
+  '\nNumber of unique foods in FooDB content (PE): ',
+  length(unique(noRF$id_correction)),
+  
+  '\nNumber of unique compounds in FooDB content (PE): ',
+  length(unique(noRF$compound_name.x)))
+```
+
+**Aggregation of Retention Factors** for each food/compound combination. Aggregation merges retention factor data across different handling types for each food and compound combo; however, the handling methods that go into each aggregated summarized retention factor are listed in a new variable 'handling_aggregate'.
+```{r}
+final.RF = semifinal.RF %>%
+  dplyr::group_by(food_id, compound_id, .drop = FALSE) %>%
+  dplyr::mutate(aggregate_RF = mean(mean_rf, na.rm = TRUE),
+                RF_handling = paste(unique(handling_process), 
+                                   collapse = ', '),
+                RF_methods = paste(unique(RF_method), 
+                                   collapse = ', ')) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(-c(mean_rf, handling_process, RF_method)) %>%
+  dplyr::distinct(food_id, compound_id, orig_content, .keep_all = TRUE)
+```
+
+```{r}
+write.csv(final.RF, 'FooDB/FooDB_PE_RF.csv', row.names = FALSE)
+```
+
+### 6) Review foods with and without retention factor data
+
+```{r}
+message('Number of unique foods (FooDB): ',
+  length(unique(final.RF$food_id)),
+  
+  '\nNumber of unique compounds (FooDB): ',
+  length(unique(final.RF$compound_id)),
+  
+  '\nNumber of unique foods (PE): ',
+  length(unique(final.RF$orig_food_id)),
+  
+  '\nNumber of unique compounds (PE): ',
+  length(unique(final.RF$orig_source_id)),
+  
+  '\nNumber of unique foods (with RF, FooDB): ',
+  nrow(final.RF %>% dplyr::filter(!is.na(aggregate_RF)) %>% 
+         dplyr::select(food_id) %>% dplyr::distinct()),
+  
+  '\nNumber of unique compounds (with RF, FooDB): ',
+  nrow(final.RF %>% dplyr::filter(!is.na(aggregate_RF)) %>% 
+         dplyr::select(compound_id) %>% dplyr::distinct()),
+  
+   '\nNumber of unique foods (with RF, PE): ',
+  nrow(final.RF %>% dplyr::filter(!is.na(aggregate_RF)) %>%
+         dplyr::select(orig_food_id) %>% dplyr::distinct()),
+  
+  '\nNumber of unique compounds (with RF, PE): ',
+  nrow(final.RF %>% dplyr::filter(!is.na(aggregate_RF)) %>% 
+         dplyr::select(orig_source_id) %>% dplyr::distinct()))
+```
+
+
+

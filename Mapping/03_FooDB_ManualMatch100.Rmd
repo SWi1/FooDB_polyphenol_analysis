@@ -1,0 +1,162 @@
+---
+title: "03_FooDB_ManualMatch100"
+author: "Stephanie Wilson"
+date: "January 2023"
+output: html_document
+---
+
+# Database Matching: FooDB to ASA24 Ingredient Descriptions
+## Step 3: Manually Matching 100 random ASA food descriptions to FooDB
+
+__Required Input Files__
+  - *FooDB_V2_descripcleaned.csv* - Output from 02_FooDB_TextProcessing
+  - *remap_descripcleaned.csv* - Output from 02_FooDB_TextProcessing, a smaller dataframe than the full asa descriptions
+  
+__Information__
+This script manually matches 100 food descriptions from ASA dietary recall data to FooDB.
+
+  1) Generates a simple random sample of 100 food descriptions of remapped asa descriptions.
+  2) Manual comparisons aided by ingredient subcode matching and pattern searching.
+  3) Create a function that will match ASA24 with manually curated FooDB codes
+  4) Export data frame with matched info
+     - Output: Manual_Match100.csv
+  
+__Output__
+  - Manual_Match100.csv
+
+```{r Load packages, include= FALSE, warning=FALSE, message=FALSE}
+library(dplyr) #Version 1.0.9
+library(readxl)
+```
+
+
+```{r Load Data, include=FALSE}
+Food_V2 = read.csv("FooDB/Food_V2_descripcleaned.csv", header=TRUE)
+asa = read.csv('data/remap_descripcleaned.csv', header=TRUE)
+```
+
+### 1) Generates a simple random sample of 100 food descriptions from dietary recalls.
+
+```{r Set Seed}
+#initial_seed = as.integer(Sys.time()) #Output: 1667858872
+#substring(initial_seed, first = nchar(initial_seed)-4, last = nchar(initial_seed)) #pulls out last five numbers
+set.seed(58872)
+```
+
+```{r Pull out 100 distinct ingredient codes}
+random100 = asa %>% 
+  distinct(Ingredient_description_y, .keep_all = TRUE) %>% 
+  sample_n(size = 100)
+
+#filter in columns for matching
+random100 = random100[,(4:6)]
+
+#Create new column row for entry number
+random100$entry = rownames(random100)
+```
+
+### 2) Manual comparisons aided by ingredient subcode matching and pattern searching
+
+```{r Filter in specific columns from Food_V2}
+#'foodb_id', 'orig_food_id', 'orig_food_common_name', 'food_V2_ID', 'Ingredient_subcode_drop'
+Food_V2 = Food_V2 %>% 
+  select(c('food_id', 'orig_food_id', 'orig_food_common_name', 'food_V2_ID'))
+```
+
+
+```{r Check potential hits with orig_food_id}
+#Convert orig_food_id to numeric. 
+#Note: note all orig_food_id are ingredient subcodes, this was done for comparison purposes.
+Food_V2$orig_food_id = as.numeric(Food_V2$orig_food_id)
+
+#Merge files
+hits = left_join(random100, Food_V2, by=c('Ingredient_subcode' ='orig_food_id'), keep=TRUE)
+
+#Optional File for Comparisions, Write to csv
+# write.csv(hits, 'hits.csv', row.names = FALSE)
+```
+
+```{r Checks}
+#how many rows don't have code matches?
+table(is.na(hits$orig_food_id)) #14 don't have matches and will need pattern searching
+
+# What are duplicated entries? Will need to consolidate
+duplicated =  hits %>% 
+  group_by(Ingredient_subcode) %>% 
+  filter(n()>1)  #Any subcode with more than 1 entry is filtered IN
+```
+
+
+```{r Examine NAs in hits file and pattern search}
+Chicken = Food_V2 %>% filter(grepl('chicken', orig_food_common_name, ignore.case = TRUE))
+Chicken
+
+Turkey = Food_V2 %>% filter(grepl('turkey.*raw', orig_food_common_name, ignore.case = TRUE))
+Turkey
+
+Biscuit = Food_V2 %>% filter(grepl('biscuit', orig_food_common_name, ignore.case = TRUE))
+Biscuit
+
+Food_V2 %>% filter(grepl('celery.*raw|raw.*celery', orig_food_common_name, ignore.case = TRUE))
+```
+
+
+```{r}
+#Compare and enter FooDB matches manually by unique id, 
+#matches goes in order from 1 to 100
+FooDB_ID_match = c(701, 8293, 7115, 9405, 1283, # 1-5
+                   1454, 4500, 1636, 1444, 3778, 
+                   2615, 283, 6741, 4765, 6868, #11-15
+                   4948, 7863, 9014, 7785, 5521, 
+                   1379, 2606, 8283, 7977, 697, #21-25
+                   5222, 1091, 2252, 1101, 1764, 
+                   958, 253, 4946, 5463, 904, #31-35
+                   3068, 3518, 2503, 938, 5727, 
+                   1423, 1684, 4825, 1148, 4298, #41-45
+                   4851, 527, 1500, 3749, 3734, 
+                   5043, 9013, 7629, 5660, 545, #51-55
+                   5719, 6688, 4941, 7834, 2331, 
+                   9016, 7396, 5638, 4670, 5741, #61-65
+                   1165, 3744, 355, 602, 247, 
+                   4770, 859, 665, 1400, 9435, #71 -75
+                   4212, 4947, 8301, 1076, 5503, 
+                   448, 9016, 851, 264, 9014, #81 - 85
+                   8329, 5044, 941, 9014, 4759, 
+                   2200, 7580, 5489, 8020, 780, #91-95
+                   8012, 3747, 7116, 4793, 499)
+```
+
+### 3) Function that will match ASA24 with _manually_ curated FooDB codes
+```{r Function to pair match data}
+matched <- function(x, y, data_x, data_y){
+  df = data.frame(matrix(ncol=8, nrow=1)) #create empty df
+  colnames(df) = c('Ingredient_subcode', 'Ingredient_description', 
+                            'Ingredient_weight_g', 'entry', 'foodb_id', 'orig_food_id', 
+                            'orig_food_common_name', 'food_V2_ID')
+  Uniquefood = x
+  FooDB_ID_match = y
+  random100 = data_x
+  Food_V2 = data_y
+  df[x, 1:8] = cbind(random100[x,], Food_V2[y,]) %>%
+      data.frame() 
+  return(df)
+}
+```
+
+### 4) Export dataframe with matched info
+```{r Create dataframe with 100 random ASA descriptions and their manual FooDB match}
+Manual_Match100 = matched(x = row.names(random100), y = FooDB_ID_match, data_x = random100, data_y = Food_V2)
+
+#Drop a repeated column and reorder the unique FooDB ID
+Manual_Match100 = Manual_Match100 %>% 
+  relocate(food_V2_ID, .after = entry)
+
+# Export file
+write.csv(Manual_Match100, 'data/Manual_Match100.csv', row.names = FALSE)
+```
+
+
+
+
+
+

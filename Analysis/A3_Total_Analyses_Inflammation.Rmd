@@ -1,0 +1,296 @@
+---
+title: "Total Polyphenol and Inflammation Analysis"
+author: "Stephanie Wilson"
+date: "November 2023"
+output: html_document
+---
+
+# Total Polyphenol Intake Analysis with Inflammation Markers
+
+__Information__. 
+This script compiles and plots model summaries from final models from A2 Blood and and A3 Fecal Analyses (which feature energy-adjusted total polyphenolic intake as a predictor).
+
+__Required Input Files__.                          
+  - *FL100_PP_Raw.csv* - Polyphenol content for each compound in foods listed in each recall test. Output from A0B_Exploration.Rmd.
+  - *FL100_merged_variables.csv* - This merged file includes binning data, SES, dietary, blood, and stool data. Output from A0_Merge_Variables.Rmd
+
+__Output__
+  - RDS - Heatmap summary
+  - Table Summary (Supplementary Table)
+
+```{r Load packAges, message = FALSE, warning = FALSE}
+library(tidyverse); library(Rfit); library(Hmisc); library(corrplot); library(ggpubr)
+library(psych); library(car)
+source('Functions/summarizemodels.R')
+```
+
+
+```{r Load Data}
+#Define compound outliers
+removal_list = factor(c('Chinese tannin', 'alpha-Viniferin'))
+
+# Load in Dietary Polyphenol Content
+# Raw is Each compound for each food in each recall by participant
+PP_Raw = read.csv('data/FL100_PP_Raw.csv') %>%
+  filter(!compound_name %in% removal_list)
+
+#multiple files including ASA averAges for kcal and fiber
+merged = read.csv('data/FL100_merged_variables.csv') %>%
+  select(c(UserName, Age, Sex, BMI, avg_total_kcal, avg_total_fiber,
+           hei_asa24_totalscore, plasma_lbp_bd1, CRP_BD1, 
+           After24h, fecal_neopterin, fecal_calprotectin, fecal_mpo)) %>%
+  mutate(Sex = factor(Sex))
+```
+
+
+
+### 1) Merge Data
+
+Sum polyphenol intake (mg) consumed for each recall, for each person, then averAged across recalls.
+```{r}
+#total_daily_intake = total daily intake (mg) for each participant's recall
+total_daily_intake = PP_Raw %>%
+  group_by(UserName, RecallNo) %>%
+  mutate(total_daily_intake_mg = sum(pp_consumed, na.rm = TRUE)) %>%
+  select(c(UserName, RecallNo, total_daily_intake_mg)) %>%
+  ungroup() %>%
+  group_by(UserName) %>%
+  mutate(Avg_Total_Daily_PP_Intake_mg = mean(total_daily_intake_mg)) %>%
+  distinct(UserName, .keep_all = TRUE) %>%
+  select(-c(RecallNo, total_daily_intake_mg)) %>%
+  left_join(merged, by = 'UserName') %>%
+  arrange(UserName) %>%
+  relocate(Sex, After24h, .after = UserName) %>%
+  mutate(energy_adj_Avg_Total_Daily_PP = Avg_Total_Daily_PP_Intake_mg/
+           (avg_total_kcal/1000))
+```
+
+Look for missing variables
+```{r}
+total_daily_intake_CRP = total_daily_intake %>%
+  filter(!is.na(CRP_BD1))
+```
+
+
+### 2) BLOOD MARKERS
+
+#### CRP
+
+CRP without Dietary Predictors
+```{r}
+#Removal of UserName 8048, row 256, outlier
+CRP_model2 = rfit(CRP_BD1 ~ energy_adj_Avg_Total_Daily_PP + Age + BMI + Sex, data = total_daily_intake_CRP %>% filter(!UserName == 8048))
+```
+
+CRP WITH Dietary Predictors
+```{r}
+CRP_model_diet2 = rfit(CRP_BD1 ~ energy_adj_Avg_Total_Daily_PP + Age + Sex + BMI + avg_total_fiber + hei_asa24_totalscore, data = total_daily_intake_CRP %>% filter(!UserName==8048))
+```
+
+#### LBP
+LBP without Dietary Predictors
+```{r}
+LBP_model = rfit(plasma_lbp_bd1 ~ energy_adj_Avg_Total_Daily_PP + Age + BMI + Sex, data = total_daily_intake)
+```
+
+LBP WITH Dietary Predictors
+```{r}
+LBP_model_diet = rfit(plasma_lbp_bd1 ~ energy_adj_Avg_Total_Daily_PP + Age + BMI + Sex + avg_total_fiber +hei_asa24_totalscore, data = total_daily_intake)
+```
+
+### 3) FECAL MARKERS
+
+Filter for stool samples older than 24 hours. Look for missing variables
+```{r}
+total_daily_intake_cleaned = total_daily_intake %>% #350 starting
+  filter(!After24h == 1) %>% #removes 30 individuals 
+  filter(!is.na(fecal_neopterin)) #removes an additional 13
+```
+
+#### NEO
+NEO without Dietary Predictors
+```{r}
+NEO_rfit = rfit(fecal_neopterin ~ energy_adj_Avg_Total_Daily_PP + Age + BMI + Sex, data = total_daily_intake_cleaned)
+```
+
+NEO WITH Dietary Predictors
+```{r}
+NEO_rfit_diet = rfit(fecal_neopterin ~ energy_adj_Avg_Total_Daily_PP + Age +
+                 Sex + BMI + avg_total_fiber +
+                 hei_asa24_totalscore, data = total_daily_intake_cleaned)
+```
+
+
+#### MPO
+
+MPO without Dietary Predictors
+```{r}
+MPO_model = rfit(fecal_mpo ~energy_adj_Avg_Total_Daily_PP + Age + Sex + BMI, data = total_daily_intake_cleaned)
+```
+
+MPO WITH Dietary Predictors
+```{r}
+MPO_model_diet = rfit(fecal_mpo ~energy_adj_Avg_Total_Daily_PP + Age + Sex + BMI + avg_total_fiber + hei_asa24_totalscore, data = total_daily_intake_cleaned)
+```
+
+#### Calprotectin
+
+CAL without Dietary Predictors
+```{r}
+CAL_rfit = rfit(fecal_calprotectin ~ energy_adj_Avg_Total_Daily_PP + Age + 
+                 Sex + BMI, data = total_daily_intake_cleaned)
+summary(CAL_rfit)
+
+ plot(fitted(CAL_rfit), rstudent(CAL_rfit))
+```
+
+CAL WITH Dietary Predictors
+```{r}
+CAL_rfit_diet = rfit(fecal_calprotectin ~ energy_adj_Avg_Total_Daily_PP + 
+                      Age + Sex   + BMI + avg_total_fiber +
+                 hei_asa24_totalscore, data = total_daily_intake_cleaned)
+```
+
+
+### 4) Summary Plots 
+From all models with total polyphenol intake
+
+```{r}
+nodiet = list(CRP_model2, LBP_model, CAL_rfit, MPO_model, NEO_rfit)
+  names(nodiet) = c('CRP', 'LBP', 'CAL', 'MPO', 'NEO')
+withdiet = list(CRP_model_diet2, LBP_model_diet, CAL_rfit_diet, MPO_model_diet, NEO_rfit_diet)
+  names(withdiet) = c('CRP', 'LBP', 'CAL', 'MPO', 'NEO')
+```
+
+
+Run the functions to aggregate the model summaries
+```{r}
+nodiet_summary = summarizemodels(nodiet, 
+                                 model_names = c('CRP', 'LBP', 'CAL', 'MPO', 'NEO'),
+                                 diet_control = FALSE)
+
+withdiet_summary = summarizemodels(withdiet, 
+                                   model_names = c('CRP', 'LBP', 'CAL', 'MPO', 'NEO'),
+                                   diet_control = TRUE)
+
+joint_summaries = rbind(nodiet_summary, withdiet_summary)
+```
+
+
+```{r}
+joint_summaries_clean = joint_summaries %>%
+  filter(!Variable == '(Intercept)') %>%
+  
+  # Nicely formatted Variable Names
+  mutate(Variable = ifelse(Variable == 'SexMale', 'Sex, Male', 
+                           ifelse(Variable == 'energy_adj_Avg_Total_Daily_PP', 
+                                  'Total Polyphenol Intake',
+                                  ifelse(Variable == 'avg_total_fiber', 'Total Fiber',
+                                         ifelse(Variable == 'hei_asa24_totalscore', 
+                                                'ASA24 HEI Total Score', Variable)))),
+    Estimate = round(Estimate, 3),
+    p.value = signif(p.value, 3),
+         Significance =  ifelse(p.value < 0.05, 'TRUE', 'FALSE'),
+    
+    # If a covariate is important, tag it with a special character    
+    MarkerSig = ifelse(Variable == 'Age' & Significance == TRUE, "\u2020",
+                            ifelse(Variable =='BMI' & Significance == TRUE, "\u2021",
+                            ifelse(Variable =='Sex, Male' & Significance == TRUE, '\u00B6',
+                            ifelse(Variable == 'Total Fiber' & Significance == TRUE, '#',
+                            ifelse(Variable == 'ASA24 HEI Total Score' & Significance == TRUE,
+                                   '\u2660', ''))))),
+    #Return CRP, LBP, and MPO to normal scale
+    Estimate_update = ifelse(outcome %in% c('CRP', 'MPO', 'LBP'),
+                             exp(Estimate), Estimate))
+
+
+combinedsymbols = joint_summaries_clean %>%
+  group_by(outcome, diet_control) %>%
+  # Merge the covariate symbols into one for each model
+  # This is for presentation of Beta coefficients
+  # This highlights the other relevant covariates in the same model
+  reframe(CombinedMarkerSig = paste(MarkerSig, collapse = '')) %>%
+  ungroup() %>%
+  right_join(joint_summaries_clean) %>%
+  mutate(Label = ifelse(Significance ==TRUE, paste(Estimate, ' ', 
+                                                   CombinedMarkerSig, sep = ''), CombinedMarkerSig),
+         outcome = factor(outcome, levels = c('CRP', 'LBP', 'CAL', 'MPO', 'NEO')),
+         diet_control = ifelse(diet_control == 'With Dietary Predictors', 
+                               "With Fiber, Total HEI", "Without Fiber, Total HEI"),
+         Variable = ifelse(Variable=="Total Polyphenol Intake", 'Total Polyphenol', Variable))# Add a default case if needed
+```
+
+
+```{r}
+ALL_Sig = combinedsymbols %>%
+  filter(Variable == 'Total Polyphenol' & Significance ==TRUE)
+
+heatmaps_total = ggplot(combinedsymbols %>%
+                    filter(Variable == 'Total Polyphenol'), 
+                  aes(x = 'Total Polyphenol', y = outcome, fill = Estimate)) + 
+  geom_tile(aes(label = Estimate)) +
+   facet_grid(~ diet_control) +
+  geom_text(data = ALL_Sig, 
+            aes(label = Label, fontface = ifelse(outcome == 'CAL' & 
+                                                   diet_control == 'Without Dietary Predictors',
+                                                 'bold', 'plain')), size = 3) + 
+  scale_fill_gradient2(low = "#CB7A5C",
+                       mid = "lightgray",
+                       high = "#5785C1",
+                       name = expression(paste(beta, "-Coefficient"))) + 
+  scale_color_manual(values = c('black', 'white')) +
+  theme_bw() +
+  labs(x = '', y = '') +
+  coord_flip() + 
+  theme(legend.position = "bottom", 
+        legend.text = element_text(angle = 45,vjust = 1, hjust = 1))
+ 
+
+heatmaps_total
+```
+
+
+```{r}
+saveRDS(heatmaps_total, file = "images/Heatmap_TotalPP.rds")
+
+#Save as image files for publication
+ggsave(heatmaps_total, filename = 'images/TotalPolyphenolModels.pdf', height = 3 , width = 8, units = 'in')
+ggsave(heatmaps_total, filename = 'images/TotalPolyphenolModels.png', height = 3 , width = 8, units = 'in')
+```
+
+#### Now let's create a table.
+```{r}
+table_data = combinedsymbols %>%
+  mutate(p.value = ifelse(p.value < 0.001, '< 0.001',
+                     ifelse(p.value < 0.01, '< 0.01', round(p.value, digits = 2))),
+                          table_label = ifelse(Significance == TRUE, paste(Variable, "\u03B2 =", 
+                                        paste(Estimate, ',', sep =''),
+                                        'P', p.value, sep = ' '), '')) %>%
+  select(outcome, diet_control, Variable, Estimate, p.value, table_label) %>%
+  mutate(diet_control = ifelse(diet_control == 'With Fiber, Total HEI', TRUE, FALSE)) 
+
+#Compile covariate relationships
+ covariate= table_data %>%
+  filter(!Variable == 'Total Polyphenol') %>% 
+   group_by(outcome, diet_control) %>%
+  reframe('Covariate Relationships' = paste(table_label, collapse = "")) 
+```
+
+
+```{r}
+#Merge covariate relationship with total polyphenol beta and pvalues
+formatted_table_data = table_data %>%
+   filter(Variable == 'Total Polyphenol') %>%
+  select(-c(table_label, Variable)) %>%
+  left_join(covariate) %>%
+  rename("Total Polyphenol \u03B2" = 'Estimate',
+         Marker = outcome,
+         'Total Polyphenol p-value' = p.value) %>%
+  mutate(Marker = factor(Marker, levels = c('CRP', 'LBP', 'CAL', 'MPO', 'NEO'))) %>% 
+  arrange(Marker, diet_control) %>%
+  relocate(diet_control, .before = Marker)
+
+write.csv(formatted_table_data, 'output/TotalPolyphenolModelsTABLE.csv', row.names =FALSE, 
+          fileEncoding = "UTF-8")
+```
+

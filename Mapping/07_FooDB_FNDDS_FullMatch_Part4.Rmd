@@ -1,0 +1,304 @@
+---
+title: "07_FooDB_FNDDSFullMatch_Part4"
+author: "Stephanie Wilson"
+date: "January 2023"
+output: html_document
+---
+
+#  Matching FooDB to ASA24 Ingredient Descriptions
+## Step 7: Matching ASA24 to FooDB
+## Part 4: Text Similarity and CHO Matching for missing grepl hits
+
+__Required Input Files__  
+  - *Food_V2_descripcleaned.csv* - output from 02_FooDB_TextProcessing
+  - *asa_descripcleaned_codematched.csv* - Output from 04_FooDB_FNDDS_FullMatch_Part1
+  - *foodb_macros_g.csv* - Output from 06_FooDB_FNDDS_FullMatch_Part3
+  - *missing_foodb_descrip.csv* - Output from 06_FooDB_FNDDS_FullMatch_Part3
+  - *2017-2018 FNDDS At A Glance - Ingredient Nutrient Values.xlsx* - downloaded from [BHNRC database](https://www.ars.usda.gov/northeast-area/beltsville-md-bhnrc/beltsville-human-nutrition-research-center/food-surveys-research-group/docs/fndds-download-databases/)
+  
+__Information__
+ASA codes at this point have been matched based on:
+  - code-matching: ASA's Ingredient code -> FooDB's orig_source_id (Script 04, Part 1)
+  - pattern searching of FooDB with a dependency-based ASA descriptor term (Script 05, Part 2) which requires additional checks for fit such as text similarity and carbohydrate matching (Script 06, Part 3)
+    
+The codes that were not found using the original Grepl search (Script 06, Part 3) need to be revisited. A second, and more simplified, grepl search will be performed. The top 5 most similar text matches for each ASA Ingredient code will be matched based on highest average rank (text similarity + CHO). If nutrient data is not available, the highest text score will be chosen.
+
+Additionally, the script performs a quick exploration into the semifinal ASA and FooDB code matches.
+
+  1) Match remaining Ingredient Codes
+  2) Match Carbohydrate similarity
+    2a) Prepare FooDB and ASA Macronutrient files
+    2b) Filtering
+    2c) Replace old codes with new code matches
+  3) Run a text similarity check on ASA codes that were code matched (from Script 04, Part 1)
+  4) Text Similarity Mean Score Exploration
+
+__Output__
+  - *codematched_semifinal* - ASA ingredient codes have been code-matched and have undergone pattern searches with code matches determined by text and CHO similarity with FooDB.
+
+
+```{r Load packages, include= FALSE, warning=FALSE, message=FALSE}
+library(tidyverse); library(readxl); library(stringdist)
+source('Functions/sim_score_function.R')
+```
+
+
+```{r Load data}
+missing.matches = read.csv('data/missing_foodb_descrip.csv', header = TRUE)
+asa = read.csv('data/asa_descripcleaned_codematched.csv', header = TRUE)
+Food_V2 = read.csv('FooDB/FooD_V2_descripcleaned.csv', header = TRUE)
+foodb_macros_g = read.csv('FoodB/foodb_macros_g.csv', header = TRUE)
+
+fndds = read_xlsx('data/2017-2018 FNDDS At A Glance - Ingredient Nutrient Values.xlsx', skip = 1) %>%
+  filter(`Nutrient description` %in% c('Protein', 'Total Fat', 'Carbohydrate')) %>%
+  select(c(`Ingredient code`, `Nutrient description`, `Nutrient value`))
+```
+
+
+```{r Quick clean on input files}
+#replaces spaces in FNDDS column names with underscores
+colnames(fndds) = gsub(' ', '_', colnames(fndds)) 
+
+# What we still need to match that did not have grepl hits
+# with our previous search term
+missing = missing.matches %>%
+  filter(is.na(orig_food_common_name)) %>%
+  select(c(Ingredient_code, Ingredient_description, searchterm2)) %>%
+  rename('searchterm' = 'searchterm2')
+```
+
+
+
+### 1) Match remaining Ingredient Codes
+These codes were not found using the original Grepl search used in Script 06. So we will use a less strict grepl search with descriptor terms (search for *either* of the two descriptor terms versus a search that must contain both).
+
+Looping the grepl search through each search term and adding resulting output to a dataframe for macronutrient checking. **Requires**:
+  - Food_V2: full set of FooDB descriptions
+  - missing: dataframe of terms to be matched, needs columns: Ingredient_description, searchterm
+  
+```{r grepl search, warning = FALSE}
+finaloutput = data.frame()
+
+for(i in 1:nrow(missing)){
+  
+# Part I - filter by pattern search
+input = Food_V2 %>%
+  select(food_V2_ID, orig_food_common_name) %>%
+  filter(grepl(missing[i, ]$searchterm, orig_food_common_name, ignore.case = TRUE))
+
+# Part II - Run function to calculate multiple text similarity scores
+scores_auto = sim_score(x = c("osa", "lv", "dl", "hamming", "lcs", 
+                              "qgram", "cosine", "jaccard", "jw", "soundex"), 
+                        asa_descrip = rep(missing[i, ]$Ingredient_description, times = nrow(input)), 
+                        foodb_descrip = input$orig_food_common_name)
+
+# Part III - Add FooDB ID column
+scores_auto$food_V2_ID = input$food_V2_ID
+
+## Part IV - Calculate Mean of text similarity indices
+scores_auto = scores_auto %>%
+  mutate(scores_auto, mean_score = 
+           rowMeans(select(scores_auto, c(osa, lv, dl, hamming, lcs, 
+                                          qgram, cosine, jaccard, jw, soundex)))) 
+
+# Part V - Filter in top three scores for macronutrient comparison
+# Highest score given larger number
+output = scores_auto %>%
+  top_n(mean_score, n = 5) %>%
+  mutate(text_rank = dense_rank(desc(mean_score)))
+
+finaloutput = rbind(finaloutput, output)
+}
+```
+
+
+Let us check to confirm that we have no remaining codes to search.
+```{r}
+message('Number of unique codes that DID NOT come through the grepl search: ', 
+        nrow(missing) - length(unique(finaloutput$asa_descrip)))
+```
+
+If zero, all codes were either code matched or found a grepl search. When there are no codes left, prepare the output file for downstream use. 
+
+```{r}
+# remove everything but the descriptions and mean score.
+finaloutput1 = finaloutput %>% 
+  select(c(asa_descrip, foodb_descrip, mean_score, food_V2_ID, text_rank)) %>%
+  rename(c('Ingredient_description' = 'asa_descrip', 
+           'orig_food_common_name' = 'foodb_descrip'))
+
+# Prepare ASA IDs
+finaloutput.ASA = asa %>%
+  select(c('Ingredient_code', 'Ingredient_description'))
+
+# Add ASA IDs
+finaloutput.updated = left_join(finaloutput1, finaloutput.ASA, 
+                         by = 'Ingredient_description') %>%
+  relocate('Ingredient_code', 'Ingredient_description',
+           'orig_food_common_name', 'food_V2_ID', .before = mean_score)
+```
+
+
+### 2) Match Carbohydrate similarity
+#### 2a) Prepare FoodB and ASA Macronutrient files
+
+```{r Filter in FooDB Content Information for our Ingredient Codes}
+foodb_macros_g = foodb_macros_g %>%
+  filter(food_V2_ID %in% finaloutput.updated$food_V2_ID)
+```
+
+ASA nutrient values are the amounts per 100 grams edible portion
+```{r Merge ASA missing food items with FNDDS nutrient values}
+asa_macros = missing %>%
+  select(c('Ingredient_code', 'Ingredient_description')) %>%
+             left_join(fndds, missing, by = 'Ingredient_code') %>%
+  filter(Ingredient_code %in% finaloutput.updated$Ingredient_code) %>%
+  rename('ASA_Macro' = 'Nutrient_description',
+         'ASA_Value' = 'Nutrient_value') 
+```
+
+
+```{r message = FALSE}
+#Merge to-match ASA Ingredient Descriptions with their FNDDS macronutrient profiles.
+Macro_matching = left_join(finaloutput.updated, asa_macros, 
+                           by = 'Ingredient_code',
+                           keep= FALSE) %>%
+  select(-Ingredient_description.y) %>%
+  rename('Ingredient_description' = 'Ingredient_description.x')
+
+Macro_matching =  left_join(Macro_matching, foodb_macros_g) %>%
+  select(-c(id, foodb_descrip))
+```
+
+Generate CHO Subset  
+Generate a rank based on how close FooDB nutrient values are to ASA nutrient values.  
+  - Lower scores go to *most* similar values.
+  - Filter based off of lowest scores
+```{r}
+CHO = Macro_matching %>% 
+  filter(ASA_Macro =='Carbohydrate') %>% 
+  filter(FooDB_Nutrient == 'CHO') %>% 
+  group_by(Ingredient_code) %>%
+  mutate(CHO_Rank = dense_rank(abs(FooDB_Value - ASA_Value)))  %>%
+  select(c(Ingredient_code, food_V2_ID, mean_score, text_rank, CHO_Rank)) 
+```
+
+Let us recombine Macros for Assessment
+```{r message = FALSE}
+scores = finaloutput.updated %>%
+  left_join(CHO) 
+
+scores = scores %>%
+  mutate(AvgTextCHO_Rank = rowMeans(select(scores, c(text_rank, CHO_Rank))))
+```
+
+#### 2b) Filtering
+
+Check which Text and CHO Rank Averages are missing.
+```{r}
+NA.Macros = scores %>%
+  filter(is.na(AvgTextCHO_Rank))
+
+message('Number of unique codes that do not have macronutrient data: ', length(unique(NA.Macros$Ingredient_code)))
+```
+
+Let us grab the rest of the entries associated with those Ingredient codes with no macronutrient information so we can identify the best entry based on text similarity
+```{r}
+#In codes with no macronutrient data, filter based off highest text similarity
+NA.Macros.hits = scores %>% 
+  filter(Ingredient_code %in% NA.Macros$Ingredient_code) %>%
+  group_by(Ingredient_code) %>%
+  filter(mean_score == max(mean_score, na.rm=TRUE)) %>%
+  distinct(mean_score, .keep_all = TRUE)
+```
+
+
+```{r}
+#In codes with macronutrient data, filter first on average text/CHO rank
+#then filter second on highest mean text similarity score
+Macros.hits = scores %>% 
+  filter(!Ingredient_code %in% NA.Macros$Ingredient_code) %>%
+  group_by(Ingredient_code) %>%
+  filter(AvgTextCHO_Rank == min(AvgTextCHO_Rank, na.rm=TRUE)) %>%
+  filter(mean_score == max(mean_score)) %>%
+  distinct(mean_score, .keep_all = TRUE)
+
+message('Number of unique codes that have macronutrient data: ', length(unique(Macros.hits$Ingredient_code)))
+```
+
+#### 2c) Replace old codes with new code matches
+
+```{r message = FALSE}
+#Merge the two lists with their new matches 
+greplhits = full_join(NA.Macros.hits, Macros.hits)
+
+#Merge the previously combined list of grepl searches
+missing.matches.updated = missing.matches %>%
+  filter(!Ingredient_code %in% greplhits$Ingredient_code) %>%
+  full_join(greplhits) %>%
+  select(c(Ingredient_code, Ingredient_description, 
+           orig_food_common_name, food_V2_ID, mean_score))
+```
+
+
+### 3) Run a text similarity check on ASA codes that were code matched (from Script 04)
+
+This is an additional step to double-check code matches were appropriate.
+```{r}
+codematched = asa %>%
+  filter(!Ingredient_code %in% missing.matches$Ingredient_code)
+
+#Compute text similarity scores
+scores_auto = sim_score(x = c("osa", "lv", "dl", "hamming", "lcs", 
+                              "qgram", "cosine", "jaccard", "jw", "soundex"), 
+                        asa_descrip = codematched$Ingredient_description, 
+                        foodb_descrip = codematched$orig_food_common_name)
+```
+
+
+```{r}
+#Add text similarity mean score to codematched
+#Join with missing.matches to complete the full set again
+#Create column to assess whether codes had a code match (vs required grepl)
+codematched = codematched %>% 
+  mutate(mean_score = 
+              rowMeans(select(scores_auto, c(osa, lv, dl, hamming, lcs,
+                                             qgram, cosine, jaccard, jw, soundex)))) %>%
+  full_join(missing.matches.updated) %>%
+  mutate(codematch = ifelse(orig_food_id == 'NA', 'No','Yes'))
+```
+
+In our new codematched file, we will know that codes with 'NA' for the orig_food_id were not code matched. Of the 1199 total codes, 170 did not have code matches.
+
+### 4) Mean score exploratory
+
+How many codes have a perfect score of 1?
+```{r}
+table(codematched$mean_score == 1)/nrow(codematched)
+```
+Approximately 76% of our codes have perfect text similarity matches to FooDB. 
+
+Visual
+```{r}
+ggplot(codematched, aes(x = mean_score, fill = codematch)) + 
+  geom_histogram(binwidth = 0.1) + 
+  labs(title = 'Distribution of ASA mean text similarity scores with FooDB',
+       subtitle = '1 = most similar, 0 = least similar',
+       x = "Mean Text Similarity Score",
+       y = 'Count', 
+       fill = 'Did ASA ingredients have a FooDB code match?') + 
+  theme_bw() + 
+  theme(legend.position = c(0.3, 0.8)) +
+  scale_y_continuous(limits = c(0, 1200), breaks = seq(0, 1200, 100)) +
+  scale_x_continuous(breaks = seq(0, 1.0, 0.1)) 
+```
+
+The majority of the codes with a perfect text similarity score were code-matched using FooDB's original source id information. An inspection of the *codematched* dataframe show that lower mean similarity scores are likely to be beverages, poultry, specific meat cuts, and fast food items. 
+
+```{r Export semifinal code matches}
+codematched_semifinal = codematched %>%
+  select(-codematch)
+
+write.csv(codematched_semifinal, 'data/codematched_semifinal.csv', row.names = FALSE)
+```
+

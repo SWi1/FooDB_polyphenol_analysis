@@ -1,0 +1,102 @@
+---
+title: "FIG_ANCOVA_Heatmap"
+author: "Stephanie Wilson"
+date: "September 2023"
+output: html_document
+---
+
+__Information__. 
+This script pulls in the outputs from the ANCOVA tests (where polyphenol classes are predictors, inflammation markers are a response) and creates a heatmap summary. 
+*Requires* ANCOVAs_ClassTransformed.Rmd has been run. 
+
+__Input Files__.                          
+  - *All_ANCOVA_results.csv* - Polyphenol content for each compound in foods listed in each recall test. Output from A4_ANCOVAs_ClassTransformed.Rmd
+
+__Output__
+  - RDS Heatmap summary
+  
+```{r}
+library(tidyverse); library(doBy)
+```
+
+Load Data
+```{r}
+All_ANCOVA_results = read.csv('output/All_ANCOVA_results.csv') %>%
+  filter(!Variable =='(Intercept)') %>%
+  mutate(diet_control = case_when(
+           diet_control == 'With Dietary Predictors' ~ 'With Fiber, Total HEI',
+           diet_control == 'Without Dietary Predictors' ~ 'Without Fiber, Total HEI'),
+         location = case_when(
+           Outcome %in% c("MPO", "CAL", "NEO") ~ "fecal",
+           Outcome %in% c("CRP", "LBP") ~ "plasma",
+           TRUE ~ "other"  # You can set a default value for other cases if needed
+         ),
+         #Relevel markers
+         Outcome = factor(Outcome, levels = c("CRP", "LBP", "CAL", "MPO", "NEO"))) 
+```
+
+
+### 1) Prepare combined 'significance' symbols for visual. 
+
+Variable of interest is for polyphenol class.
+```{r}
+combinedsymbols = All_ANCOVA_results %>%
+  group_by(Outcome, diet_control, Class) %>%
+  # Merge the covariate symbols into one for each model
+  # This is for presentation of Beta coefficients
+  # This highlights the other relevant covariates in the same model
+  reframe(CombinedMarkerSig = paste(MarkerSig, collapse = '')) %>%
+  ungroup() %>%
+  right_join(All_ANCOVA_results)  # Add a default case if needed
+```
+Calculate means of the absolute value of each Coefficient. Normalize polyphenol intake class coefficients to the calculated group mean.
+```{r}
+means = combinedsymbols %>% 
+  filter(Variable=="Polyphenol Class Intake") %>%
+  group_by(Outcome) %>%
+  summarize(mean_coefficient = mean(abs(Coefficient))) %>%
+  mutate(Variable = "Polyphenol Class Intake")
+
+combinedsymbols_updated = combinedsymbols %>%
+  left_join(means) %>%
+  mutate(Coefficient_norm = ifelse(is.na(mean_coefficient), NA, Coefficient/mean_coefficient))
+```
+
+
+### 2) Heat Map
+
+```{r}
+# Call in those formatted labels for our important polyphenolic classes
+# These will be used as labels for our heatmap tiles.
+ALL_Sig = combinedsymbols_updated %>%
+  filter(Variable == 'Polyphenol Class Intake' & Adjusted_P_Value < 0.05) %>%
+  mutate(Label = paste(signif(Coefficient_norm, 2), ' ', CombinedMarkerSig, sep = '')) # Add a default case if needed
+
+heatmaps = ggplot(combinedsymbols_updated %>% filter(Variable == 'Polyphenol Class Intake'), 
+                  aes(x = Class, y = Outcome, fill = Coefficient_norm)) + 
+  geom_tile(aes(label = Coefficient)) +
+  geom_text(data = ALL_Sig, aes(label = Label), color = 'black', size = 3) + 
+  facet_grid(~ diet_control) +
+  scale_fill_gradient2(low = "#CB7A5C",
+                       mid = "lightgray",
+                       high = "#5785C1",
+                       name = expression(atop(paste(beta, "-Coefficient"), "(mean-centered)"))) + 
+  theme_bw()  + 
+  coord_flip() + 
+  #Move legend to bottom
+  theme(legend.direction = "vertical", legend.position = "right") +
+  labs(y = '', x ='Class')
+ 
+heatmaps
+```
+
+Export the files
+```{r}
+# As a ggplot object
+saveRDS(heatmaps, file = "images/Heatmap_ClassPP.rds")
+
+#For publications
+ggsave(heatmaps, filename = 'images/Outcome_ANCOVA.pdf', height = 6 , width = 8, units = 'in')
+ggsave(heatmaps, filename = 'images/Outcome_ANCOVA.jpg', height = 6 , width = 8, units = 'in')
+```
+

@@ -1,0 +1,126 @@
+---
+title: "dietML - RDS Paths and Performance"
+author: "Stephanie Wilson"
+date: "November 2023"
+output: html_document
+---
+
+# Create RDS Paths and Extract Performance Metrics
+
+This script pools output from multiple RDS files, which are a key output file from the dietML program built by Dr. Andrew Oliver. Each RDS file is a packaged R environment which contains numerous dataframes. This script:
+
+1) Isolates the pathways for each of the RDS files created by one run of dietML and 
+2) Extracts performance metrics from random forest models
+
+__Inputs__. 
+- *dietML RDS files* - from dietML output
+- *metadata* - from ML2A_dietML_meta_Prep.Rmd
+- *HFE_pooled_selected_features_longform.csv* - Output from ML1B_Pooled_taxaHFE_features.Rmd
+  
+__Outputs__. 
+- *rds_path_subclinical_names.csv*
+- *dietML_subclinical_performance_metrics.csv*
+  
+```{r LOAD PACKAGES, message=FALSE}
+library(tidyverse); library(rvest); library(wesanderson); library(xml2); library(stringr); library(Hmisc); library(ggpubr);library(grid)
+```
+
+Load Functions
+```{r}
+source('Functions/find_rds.R')
+source('Functions/extract_rds_data.R')
+source('Functions/extract_performance_metrics.R')
+```
+
+
+Load Data
+```{r}
+#Load pooled taxaHFE output and metadata variable list
+taxahfe_output = read.csv('output/HFE_pooled_selected_features_longform.csv')
+metadata_full = str_to_lower(colnames(read.csv('HFE/Subclinical/NEO_dietML/merged_GI_subclinical.csv')))
+```
+
+### 1) Format Feature Names
+```{r}
+#Clean the compound data first
+taxa = taxahfe_output %>%
+  select(c(features, formatted_name, level)) %>%
+  # Remove duplicate entries
+  distinct(features, .keep_all = TRUE) %>%
+  mutate(level2 = case_when(level == 'Phylum' ~ 'Superclass',
+                            .default = level),
+    feature_publish = ifelse(level2 %in% c('Class', 'Superclass'), 
+                                  paste(formatted_name, ' (', level2, ')', sep = ''), 
+                                  formatted_name)) %>%
+  select(c(features, feature_publish)) %>%
+  rename('feature' = 'features')
+```
+
+ 
+Format metadata names
+```{r}
+features = data.frame(feature = metadata_full, 
+                      feature_publish = c('Subject', 'Age', 'Sex, Male', 'BMI',
+                                          'Education',  'Avg Total Fiber', 
+                                          'Avg Total Protein',  
+                                          'ASA24 HEI Total Score')) %>%
+  full_join(taxa) %>%
+  mutate(feature = ifelse(feature == 'sex', "sex_male", feature))
+```
+
+### 2) Load Path Information
+
+Get the paths of all rds files
+```{r}
+rds_files = find_rds_files(getwd())
+rds_files_df = as.data.frame(str_remove(rds_files, '/Users/stephanie.wilson/Desktop/SYNC/Scripts/FL100_Polyphenol_Analysis/')) %>%
+  dplyr::rename('path' = 1) %>%
+  filter(str_detect(path, "Subclinical")) %>%
+  slice_head(n=4)
+```
+
+Extract Informative Key Labels from the RDS Paths 
+```{r}
+tags = as.data.frame(str_match(rds_files_df$path, 
+                               #Extract text between 1 and 2nd, 2nd and 3rd /
+                               # extract the text before the underscore
+                               "/([^/]+)/([^/]+)/([^/]+)_")[, 2:4]) %>%
+  # Rename the variables to be more descriptive
+  dplyr::rename('response_type' = 1,
+                'model' = 2,
+                'marker' = 3) %>%
+  mutate(model = ifelse(model == 'Modifiable', 'Mod', model))
+
+#combine the dataframes
+rds_info = cbind(rds_files_df, tags) %>%
+  mutate(label = paste(response_type, model, marker, sep = '_'))
+
+write.csv(rds_info, 'output/rds_path_subclinical_names.csv', row.names = FALSE)
+```
+
+
+
+### 3) Performance metrics
+```{r warning = FALSE}
+metrics_data = list()
+
+# Loop through each RDS file and extract the data
+for (i in seq_along(rds_info$path)) {
+  file_path = rds_info$path[i]
+  extracted_data = extract_performance(file_path)
+  metrics_data[[i]] = extracted_data
+}
+
+# Format
+all_metrics = bind_rows(metrics_data) %>%
+  rename('metric' =1 ,
+         'estimator' = 2, 
+         'estimate' = 3, 
+         'config' = 4, 
+         'label' = 5) %>%
+  left_join(rds_info) %>%
+  select(-path) 
+
+#Export
+write.csv(all_metrics, 'output/dietML_subclinical_performance_metrics.csv', row.names = FALSE)
+```

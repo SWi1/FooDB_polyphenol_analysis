@@ -1,0 +1,124 @@
+---
+title: "Understanding Food Sources - Compound Analysis"
+author: "Stephanie Wilson"
+date: "November 2023"
+output: html_document
+---
+
+# Calculate Food Polyphenol Intakes
+
+__Overview__
+This code determines the average polyphenol intake for each unique food consumed by a participant.
+
+__Inputs__
+  - *PP_Raw.csv* - from A0_FilePrep_Exploration.Rmd
+  - *FooDB_phenols_taxonomy.csv* - from A0A_Scrape_Taxonomy.Rmd
+  - *Ingredient_Intake_Frequency.csv* - Output from A2_Polyphenol_Intake_Summary.Rmd
+  
+__Outputs__
+  - *Avg_Polyphenol_Intake_ByFood.csv* - Avg Intake for each polyphenol from each unique food by each participants
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+tax = read.csv('FooDB/FooDB_phenols_taxonomy.csv')
+
+#Define compound outliers
+removal_list = factor(c('Chinese tannin', 'alpha-Viniferin'))
+
+# Load ASA - FooDB polyphenol data
+PP_Raw = read.csv('data/FL100_PP_Raw.csv') %>%
+  filter(!compound_name %in% removal_list) %>%
+  left_join(tax) 
+
+# Load food frequency data
+frequency = read.csv('output/Ingredient_Intake_Frequency.csv') %>%
+  select(-overall_avg_food_ppintake)
+```
+
+
+
+### Format Dietary Data
+
+Averages across Foods by compound
+```{r}
+Intakes =  PP_Raw %>%
+  
+  #Group by Taxonomic Class
+  group_by(UserName, RecallNo, Ingredient_code, compound_public_id) %>%
+  
+  #gets the sum of each compound for each participant's recall
+  mutate(intake_mg = sum(pp_consumed, na.rm = TRUE)) %>% 
+  select(c(UserName, food_id, food_name, RecallNo, Ingredient_code,
+           Ingredient_description, Ingredient_consumed_g,
+           compound_public_id, compound_name, klass, intake_mg)) %>%
+  ungroup()%>%
+  
+  #Remove duplicates since we've summed each polyphenol per recall
+  distinct(UserName, RecallNo, Ingredient_code, compound_public_id, .keep_all = TRUE)
+```
+
+
+```{r}
+test = Intakes %>%
+  filter(klass %in% c("Prenol lipds", "Phenylpropanoic acids")) %>%
+  filter(intake_mg>0)
+```
+
+
+```{r}
+Intakes_Ingredient = Intakes %>%
+  
+#Average polyphenol intake across recalls for each compound
+  group_by(UserName, Ingredient_code, compound_public_id) %>%
+  mutate(Avg_intake = mean(intake_mg, na.rm = TRUE)) %>%
+  ungroup() %>%
+  
+  #Remove duplicates
+  distinct(UserName, Ingredient_code, compound_public_id, .keep_all = TRUE) %>%
+  select(c(UserName, RecallNo, food_id, food_name, Ingredient_code,
+           Ingredient_description, compound_public_id,
+           compound_name, klass, Avg_intake)) %>%
+  filter(!is.na(Avg_intake))
+```
+
+
+```{r}
+Intakes_Food = Intakes %>%
+  
+#Average polyphenol intake across recalls for each compound
+  group_by(UserName, food_id, compound_public_id) %>%
+  mutate(Avg_intake = mean(intake_mg, na.rm = TRUE)) %>%
+  ungroup() %>%
+  
+  #Remove duplicates
+  distinct(UserName, food_id, compound_public_id, .keep_all = TRUE) %>%
+  select(c(UserName, RecallNo, food_id, food_name, compound_public_id,
+           compound_name, klass, Avg_intake)) %>%
+  filter(!is.na(Avg_intake))
+
+write.csv(Intakes_Food, 'output/Avg_Polyphenol_Intake_ByFood.csv', row.names =FALSE)
+```
+
+
+### Test with one Compound
+```{r}
+# At Ingredient Level
+Intakes_Ingredient %>%
+  filter(compound_name == 'Epicatechin') %>%
+  group_by(Ingredient_description, compound_public_id) %>%
+  mutate(AVERAGE = mean(Avg_intake, na.rm = TRUE)) %>%
+  distinct(Ingredient_description, .keep_all = TRUE) %>%
+  select(c(food_name, Ingredient_description, klass, AVERAGE)) 
+
+# At Food Level
+Intakes_Food %>%
+  filter(compound_name == 'Hyperin') %>%
+  group_by(food_id, compound_public_id) %>%
+  mutate(AVERAGE = mean(Avg_intake, na.rm = TRUE)) %>%
+  distinct(food_id, .keep_all = TRUE) %>%
+  select(c(food_id, food_name, AVERAGE)) %>%
+  left_join(frequency)
+```

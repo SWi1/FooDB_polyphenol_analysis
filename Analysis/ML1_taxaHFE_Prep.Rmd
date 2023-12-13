@@ -1,0 +1,215 @@
+---
+title: "Compound HFE File Preparation"
+author: "Stephanie Wilson"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# File Preparation for HFE of Polyphenolic compounds 
+
+This script prepares input and metadata files for use in the HFE program built by Dr. Andrew Oliver.
+
+__Inputs__. 
+  - *FL100_merged_variables.csv* - many collective files to reduce the amount of input files
+  - taxonomy - From A0A_Scrape_Taxonomy.Rmd, taxonomic classifications for polyphenolic compounds
+  - *FL100_PP_Raw.csv* - From A0B_Exploration.Rmd, polyphenolic data for each compound, recall, and participant
+  
+__Outputs__. 
+  - metadata_file_fecal.csv (sample size adjusted)
+  - metadata_file_blood.csv (sample size adjusted)
+  - covariates.csv
+  - input_file_raw.csv - Average intake for each polyphenol 
+  - input_file_relabund.csv (KEY) - Average intake for each polyphenol, converted to relative abundance 
+  
+  
+```{r LOAD PACKAGES, messages = FALSE}
+library(dplyr); library(tidyr); library(purrr); library(bestNormalize)
+library(rvest); library(xml2); library(stringr); library(Hmisc)
+```
+
+Load Data
+```{r}
+taxonomy = read.csv('FooDB/FooDB_phenols_taxonomy.csv') %>%
+  select(c(compound_public_id, kingdom:klass, compound_name)) %>%
+  mutate(klass = ifelse(klass =='', paste('Unclassified', superklass), klass))
+
+#Define compound outliers
+removal_list = factor(c('Chinese tannin', 'alpha-Viniferin'))
+
+# Load in Dietary Polyphenol Content, 
+# Raw is Each compound for each food in each recall by participant
+PP_Raw = read.csv('data/FL100_PP_Raw.csv') %>%
+  filter(!compound_name %in% removal_list)
+
+#multiple files including ASA averages for kcal and fiber
+merged = read.csv('data/FL100_merged_variables.csv') %>%
+  mutate(Sex = factor(Sex)) %>%
+  rename('subject_id' = 'UserName')
+```
+
+
+### 1) Obtain Average Intake for every compound from each Participant
+```{r}
+total_daily_intake = PP_Raw %>%
+  group_by(UserName, RecallNo, compound_public_id) %>%
+  
+  #gets the sum of each compound for each participant's recall
+  mutate(compound_intake_mg = sum(pp_consumed, na.rm = TRUE)) %>% 
+  select(c(UserName, RecallNo, compound_public_id, compound_intake_mg)) %>%
+  ungroup()%>%
+  
+  #Remove duplicates since we've summed each polyphenol per recall
+  distinct(UserName, RecallNo, compound_public_id, .keep_all = TRUE) %>%
+  group_by(UserName, compound_public_id) %>%
+  
+  #Average polyphenol intake across recalls for each compound
+  mutate(Avg_compound_intake = mean(compound_intake_mg, na.rm = TRUE)) %>%
+  ungroup() %>%
+  
+  #Remove duplicates
+  distinct(UserName, compound_public_id, .keep_all = TRUE) %>%
+  select(c(UserName, compound_public_id, Avg_compound_intake))
+
+#Let's go ahead and write this file
+write.csv(total_daily_intake, 'FooDB/FooDB_phenol_content_DailyCompoundAvg.csv', row.names = FALSE)
+```
+
+### 2) Prepare Taxonomy Clade Name
+
+```{r}
+#Define a mapping of Greek letters and their replacements
+greek_mapping = c("α" = "alpha", "β" = "beta", "γ" = "gamma", "δ" = "delta",
+                   "ε" = "epsilon", "ζ" = "zeta", "η" = "eta", "θ" = "theta",
+                   "ι" = "iota", "κ" = "kappa", "λ" = "lambda", "μ" = "mu",
+                   "ν" = "nu", "ξ" = "xi", "ο" = "omicron", "π" = "pi",
+                   "ρ" = "rho", "σ" = "sigma", "τ" = "tau", "υ" = "upsilon",
+                   "φ" = "phi", "χ" = "chi", "ψ" = "psi", "ω" = "omega")
+
+# Function to replace Greek letters using the mapping
+replace_greek = function(match) {
+  greek_mapping[[match]]
+}
+```
+
+```{r}
+#Replace missing variables as Unclassified
+taxonomy[taxonomy == ""] = 'Unclassified'   
+
+#Prepare taxonomy labels and concatenate
+taxonomy_clade = taxonomy %>%
+  
+  #CLEAN TAXONOMY STRINGS
+  #mutate_if(is.character, str_replace_all, "[^[:alnum:]_]+", '_')  %>% #replace non alphanumeric except _
+  #mutate_if(is.character, str_replace_all, "[α-ωΑ-Ω]", replace_greek) %>% #replace Greek letters
+  #mutate_if(is.character, str_replace_all, '^_', '') %>% #remove leading _
+  #mutate_if(is.character, str_replace_all, '_$', '') %>% #remove trailing _
+
+  #ADD LABELS for Taxa HFE
+  mutate(kingdom = sub("^", "k__", kingdom),
+         superklass = sub("^", "p__", superklass),
+         klass = sub("^", "c__", klass),
+         compound_name = sub("^", "s__", compound_name)) %>%
+  
+  rename('species' = 'compound_name') %>%
+  unite('clade_name', kingdom:species, sep = '|', remove = TRUE) #concatenate
+
+write.csv(taxonomy_clade, 'HFE/input_file_clade_key.csv', row.names=FALSE)
+```
+
+### 3) Prepare the input dietary files for HFE
+
+#### 3a) Input_file, RAW
+```{r}
+compound_intake = total_daily_intake %>%
+  
+  #Transpose dataframe where each column is a participant
+  pivot_wider(names_from = UserName, values_from = Avg_compound_intake, 
+              values_fill = 0) %>%
+  left_join(taxonomy_clade, by = 'compound_public_id') %>%
+  relocate('clade_name', .before = 'compound_public_id') %>%
+  select(-compound_public_id) %>% 
+  filter(!is.na(clade_name))
+
+#write.table(compound_intake, 'HFE/input_file_raw.txt', sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+#### 3b) input_file, relative abundance
+```{r}
+# Calculate the sum of each participant's 'species' counts
+participant_totals = colSums(compound_intake[-1])
+
+# Divide each species count within a participant by the total count for that participant
+relative_abundance = sweep(compound_intake[-1], 2, participant_totals, "/")
+
+# Multiply the result by 100 to obtain relative abundance as a percentage
+relative_abundance = relative_abundance * 100
+
+# Add the clade_name back
+compound_intake_relabund = relative_abundance %>%
+  mutate(clade_name = compound_intake$clade_name) %>%
+  relocate(clade_name, .before = 1)
+
+write.table(compound_intake_relabund, 'HFE/input_file_relabund.txt', sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+
+#### 3c) metadata_file.txt for fecal measures
+
+```{r}
+fecal = merged %>%
+  filter(!is.na(avg_total_kcal)) %>% #removes 43 from incomplete ASA24
+  filter(!After24h == 1) %>% #removes 30 individuals 
+  filter(!is.na(fecal_neopterin)) %>% #removes 13
+  select(c(subject_id, fecal_calprotectin, fecal_mpo, fecal_neopterin)) %>%
+  mutate(neo_quartile = as.numeric(cut2(fecal_neopterin, g = 4)),
+         mpo_quartile = as.numeric(cut2(fecal_mpo, g = 4)),
+         cal_quartile = as.numeric(cut2(fecal_calprotectin, g = 4))) 
+
+#Add transformed variables
+mpo_transformed = boxcox(fecal$fecal_mpo)
+neo_transformed = boxcox(fecal$fecal_neopterin)
+
+fecal = fecal %>%
+  mutate(neo_boxcox = neo_transformed$x.t,
+         mpo_boxcox = mpo_transformed$x.t)
+
+write.table(fecal, 'HFE/metadata_fecal.txt', sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+
+#### 3c) metadata_file.txt for blood measures
+```{r}
+blood = merged %>%
+  filter(!is.na(avg_total_kcal)) %>% #removes 43 from incomplete ASA24
+  select(c(subject_id, CRP_BD1, plasma_lbp_bd1)) %>%
+  filter(!is.na(CRP_BD1)) %>% # removes 2
+  mutate(crp_quartile = as.numeric(cut2(CRP_BD1, g = 4)),
+         lbp_quartile = as.numeric(cut2(plasma_lbp_bd1, g = 4)),
+         crp_boxcox = boxcox(CRP_BD1)$x.t)
+```
+
+
+### SUBCLINICAL
+
+Continuous
+CRP < 10000 ng/mL
+```{r}
+metaCRP_subclin = blood %>% 
+  filter(CRP_BD1 < 10000)
+
+write.table(metaCRP_subclin, 'HFE/metadata_CRP_subclinical.txt',
+            sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+Continuous - GI
+Based off of fecal calprotectin < 100
+```{r}
+metafecal_subclin = fecal %>% 
+  filter(fecal_calprotectin < 100) 
+
+write.table(metafecal_subclin, 'HFE/metadata_fecal_subclinical.txt',
+            sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+
+

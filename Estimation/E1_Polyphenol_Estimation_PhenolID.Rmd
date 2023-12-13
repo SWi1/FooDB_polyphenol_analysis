@@ -1,0 +1,228 @@
+---
+title: "E1_Polyphenol_Estimation_PhenolID"
+author: "Stephanie Wilson"
+date: "January 2023"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Polyphenol Estimation
+## Step 1: Identification of Phenols in FooDB
+
+__Required Input Files__  
+  - *FooDB2_polyphenols_ID.sdf* - SDF from Naveja email communications
+  - *Compound.csv.bz2* - FooDB data (version 1) downloaded Sept 2022 from FooDB.ca/downloads
+  - *Content.csv.bz2* - FooDB data (version 1) downloaded Sept 2022 from FooDB.ca/downloads
+  - *Food.csv* - FooDB data (version 1) downloaded Sept 2022 from FooDB.ca/downloads
+
+__Information__  
+Wilson and Lemay corresponded with Jose Naveja to obtain phenolic compounds from FooDB (Wilson sent Naveja the version downloaded Sept 2022). Dr. Naveja identified phenolic compounds using methods outlined in his 2018 paper in FL100 and emailed back the resulting SDF file. 
+
+This script pulls out unique identifiers of phenolic compounds (identified by Naveja) from a chemical SDF file and matches identifiers to ones present in FooDB's Content and Compound csv files. Resulting data can also be explored in the optional step 4. Specifically, this script does the following:
+
+  1) Pull out ID's from provided Naveja SDF (file of identified phenolic compounds in FooDB).
+  2) Match phenol IDs from SDF to FoodB's Compound List for additional compound information.
+     - Output: FooDB_phenols.csv
+  3) Merge phenol compound data with FooDB's Content information
+  4) Data Exploration of Compound/Content Output
+     4a) Merger Stragglers
+     4b) How many compounds are not quantified in foods?
+     4c) Endogenous compounds exploration
+         - Output (Optional): Endogenous_phenols.csv
+
+__Outputs__  
+  - *FooDB_phenols.csv* - Polyphenols pulled out of Compounds.csv
+  
+```{r Load Packages, message=FALSE}
+library(cinf) #to load sdf files
+library(tidyverse)
+```
+
+
+```{r Load Data}
+# Load SDF dataset provided by Authors
+SDF = read_sdf('FooDB/FooDB2_polyphenols_ID.sdf')
+
+# Load FooDB data, accessed September 2022
+# Use Content.csv to assess all possible matches
+Compound = read.csv('FooDB/Compound.csv.bz2')  
+
+Content = read.csv('FoodB/Content.csv.bz2', header=TRUE) %>% 
+  select(-c('creator_id', 'updater_id', 'orig_citation', 'created_at', 
+            'updated_at', 'orig_method', 'orig_unit_expression', 
+            'citation_type'))
+
+Food = read.csv('FooDB/Food.csv') %>%
+   select(c('id', 'name')) %>%
+   rename('food' = 'name')
+```
+
+
+### 1) Pull out ID's from provided Naveja SDF (file of identified phenolic compounds in FooDB).
+```{r Pull out compound identifying information from props}
+# Template for map usage _map(list, function, 'item name or position number')_
+ID = SDF %>% 
+  map_chr(., pluck, 'props', 'public_id') %>%
+  tibble()
+
+#rename singular column
+colnames(ID) = 'ID'
+```
+
+
+### 2) Match phenol IDs from SDF to FoodB's Compound List for additional compound information
+```{r Pull out selected phenolic IDs from FooDB Compounds}
+FooDB_phenols = right_join(Compound, ID, by = c('public_id' = 'ID'))
+
+#Export Compound information
+write.csv(FooDB_phenols, 'FooDB/FooDB_phenols.csv', row.names = FALSE)
+```
+
+
+*INSERT CLASSIFICATION*
+
+### 3) Merge phenol compound data with FooDB's Content information. 
+
+We won't export this file as it doesn't contain the cleaned food descriptions. We will do that in the second phenol script.
+
+Content first needs to be filtered for Compounds which is where you'll find polyphenols. 
+  - source_type == Nutrients are your 'classical nutrients' in dietary reporting
+```{r Merge phenol Compound data with Content Data}
+#Filter for compounds
+Content_filtered = Content %>% 
+  filter(source_type == 'Compound')
+
+FooDB_phenol_content = left_join(FooDB_phenols, Content_filtered, by = c('id' = 'source_id'), keep=TRUE) 
+```
+
+
+### 4) Data Exploration of phenol Compound/Content Output
+This code provides insights into phenolic content data from FooDB.
+
+#### 4a) Merger Stragglers
+
+```{r Identify what didn't join in the Compound/Content merge}
+stragglers = anti_join(FooDB_phenols, Content_filtered, by = c('id' = 'source_id'))
+```
+
+It appears we have 326 compounds that do not have content information. Of the 3080 identified by Naveja, we have 2754 compounds associated with food and have access to content amounts.  
+ 
+Wilson randomly sampled (11-29-22) five compounds and searched them on FooDB.ca to confirm there are not associated foods with them. All compounds were in the system but returned no associated food hits.
+
+
+#### 4b) How many compounds are not quanitified in foods?
+```{r}
+FooDB_phenol_content_quantified = FooDB_phenol_content %>% filter(!is.na(orig_content))
+
+#Amount quantified
+nrow(FooDB_phenol_content_quantified)/nrow(FooDB_phenol_content)
+
+#Amount unquantified
+1 - nrow(FooDB_phenol_content_quantified)/nrow(FooDB_phenol_content)
+```
+
+Approximately 89% of the phenol Compound/Content merge is missing quantification data. Next step is to determine how many compounds we have quantifiable information on. 
+
+```{r Determine distinct number of compounds with quantifiable content}
+distinct_quantified = FooDB_phenol_content_quantified %>% 
+  count(name, public_id, sort=TRUE)
+
+# What is the total number of quantified compounds?
+nrow(distinct_quantified)
+```
+What are the top citation sources?
+```{r}
+citation = FooDB_phenol_content_quantified %>% 
+  count(citation, sort=TRUE)
+
+# Look at the top five
+citation[1:5,]
+
+# First three add a lot of information, what's their total contribution?
+message("Total contribution of top three citations: ", round(sum(citation[1:2,2])/sum(citation[,2])*100, digits =1), "%") #top 3/total
+```
+
+Of the quantified data (11.4%), we have 493 unique compounds. Approximately 86.7% of the food-associate entries are coming from Phenol Explorer (4956) and the USDA (3893).
+
+Which databases are contributing the most unique compounds?
+
+```{r}
+overlap = FooDB_phenol_content_quantified  %>%
+  count(name, public_id, citation, sort=TRUE) %>%
+  count(citation, sort=TRUE)
+
+# top 5 databases contributing quantified compounds
+overlap[1:5,]
+```
+
+We can see that Phenol Explorer contributes the most number of compounds with quantified data (n=350), followed by Duke (160), and USDA (24). 
+
+Let us repeat the same for the unquantified data.
+```{r}
+# number of distinct unquantified
+nrow(FooDB_phenols) - nrow(distinct_quantified)
+
+#Filter only unquantified content
+unquantified = FooDB_phenol_content %>% 
+  filter(is.na(orig_content)) 
+
+#Count sources
+unquantified_sources = unquantified %>%
+count(citation, sort=TRUE)
+
+#Count unique unquantified codes
+unquantified_counts = unquantified %>%
+  distinct(public_id, .keep_all = TRUE) %>%
+  count(citation, sort = TRUE)
+```
+
+We have 89423 unquantified entries featuring 2261 compounds. Top 4 citations for entries are:
+  1. Manual
+  2. DFC Codes
+  3. Duke
+  4. Knapsack
+  
+```{r}
+# how many unique compounds per DB?
+ unquantified  %>%
+  count(name, public_id, citation, sort=TRUE) %>%
+  count(citation, sort=TRUE)
+```
+We can see that the dictionary of food compounds (DFC) contributes the most number of compounds at 1792, followed by Knapsack (866), Duke (731), and Manual entry (292). 
+
+
+#### 4c) Endogenous compounds exploration
+Revisiting possible endogenous compounds present in the merge. These compounds were previously excluded from text cleaning in 01_FooDBCleaning_FooDB_FNDDS.ipynb.
+```{r}
+#Filter in endogenous phenolic compounds 
+Endogenous = FooDB_phenol_content %>% 
+  filter(orig_food_common_name %in% c('Endogenous compounds from human (HMDB)'), keep=TRUE)
+
+# Merge associated food names with compound data
+Endogenous = left_join(Endogenous, Food, by = c('food_id' = 'id'))
+
+# Relocate colums to front
+Endogenous = Endogenous %>% 
+  relocate(orig_food_common_name, food, .after = 'name')
+
+# What foods are linked to endogenous phenols?
+Endogenous %>% 
+  distinct(food)
+```
+
+
+```{r Distinct Endogenous phenolic compounds}
+Endogenous_distinct = FooDB_phenol_content %>% 
+  filter(orig_food_common_name %in% c('Endogenous compounds from human (HMDB)'), keep=TRUE) %>%
+  distinct(public_id, .keep_all = TRUE) %>%
+  relocate(orig_food_common_name, .after = 'name')
+
+# Optional export
+#write.csv(Endogenous_distinct, 'data/Endogenous_phenols.csv', row.names = FALSE)
+```
+
+We have 31 distinct endogenous compounds classified as phenolic that also have food-associations. Food-associations appear to be of largely wild game and game birds.
+
+
+

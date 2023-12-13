@@ -1,0 +1,125 @@
+---
+title: "Duke_Filtering"
+author: "Stephanie Wilson"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+#  Filter Dr. Duke's Ethnobotanical Records
+
+__Information__. 
+It was noted that in Dr. Duke's polyphenol content entries that there are food parts that are measured but not commonly consumed. This script goes through Dr. Duke compounds (that have a food match with our dietary data) and filters in the food parts that are commonly consumed. We will update FooDB_phenol_premerge.csv.bz2 with these filtered entries downstream. 
+
+__Required Input Files__.                          
+  - *codematched_final.csv* - Output from 08_FooDB_FNDDS_FullMatch_Part5    
+  - *ingredientized_asa_10-2022.csv* - Output from 04_ingredientize_merge.rmd script, 
+      - 'Ingredientized' Quality Controlled ASA24 Recall Data from FL100 Study.  
+  - *FooDB_phenol_content.csv.bz2* - Output from Q4_Polyphenol_Estimation_Units
+ 
+__Output__. 
+  - *Duke_Filtered_Content.csv* - Dr. Duke entries that have been cleaned for commonly consumed food parts.
+  
+```{r Load Data}
+#FooDB polyphenol quantities
+FooDB_phenol_content = read.csv('FooDB/FooDB_phenol_premerge.csv.bz2') %>%
+  filter(!compound_public_id == 'FDB001111')
+
+#Dietary Data
+ingredients = read.csv('Ingredientize/data/ingredientized_asa_10-2022.csv') %>%
+  select(-c(WWEIA.Category.description, UserID, EatWith)) %>%
+  select(-(KCAL:D_CHEESE)) # remove ASA nutrient information
+
+
+matched = read.csv('data/codematched_final.csv') %>%
+  relocate('food_V2_ID', 'orig_food_common_name', 
+                  .before = Ingredient_code) %>%
+  select(-Ingredient_description)
+
+# Join our dietary data with their corresponding FooDB food code
+asa = left_join(ingredients, matched, by = 'Ingredient_code')
+```
+
+### Examine and Select Food parts 
+
+Dr. Duke's Ethnobotanical Database contains multiple food parts, including those that are not commonly consumed. For each food, the most common food parts are filtered in.
+
+```{r}
+duke = FooDB_phenol_content %>%
+  filter(citation == 'DUKE')%>%
+  
+  # Filter in food entries that have more than one food part so we can analyze further
+  group_by(food_id) %>%
+  filter(n_distinct(orig_food_part) >= 1) %>%
+  ungroup()
+```
+
+Look at the specific combos
+```{r}
+part_combos = duke %>% 
+  filter(food_id %in% asa$food_id) %>%
+  select(food_id, food_name, orig_food_part) %>%
+  distinct(food_id, orig_food_part, .keep_all = TRUE)
+
+part_combos
+```
+
+Create a list of FooDB ids and for each id, the parts that we want.
+```{r}
+desired_orig_food_parts = data.frame(
+  food_id = c(6, 9, 11, 12, 13, 13,
+              14, 15, 15, 16, 17, 
+              18, 18, 19, 19, 21,
+              22, 26, 32, 37, 38, 38, 38, 
+              39, 39, 40, 43, 43,
+              47, 47, 49, 49, 49,
+              54, 56, 56, 57, 57,
+              59, 61, 61, 61, 61,
+              63, 65, 67, 67, 68, 
+              79, 81, 85, 85, 85,
+              86, 88, 88, 92, 94,
+              98, 101, 105, 105, 105, 105, 
+              106, 115, 118, 119, 119, 
+              121, 121, 122, 122, 124, 124,
+              125, 129, 130, 131, 131, 131,
+              133, 134, 135, 141, 141, 
+              144, 147, 149, 150, 150,
+              151, 151, 152, 153, 174,
+              175, 175, 178, 178, 183, 183,
+              200, 204, 204, 204, 205,
+              206, 245, 444, 46, 50, 
+              77, 95, 139, 158, 192), 
+  desired_part = c("Bulb", "Leaf", "Seed", "Fruit", "Plant", "Leaf",
+                   "Plant", "Plant", "Seed", "Seed", "Root",
+                   "Root", "Plant", "Plant", "Leaf", "Shoot", 
+                   "Seed", "Plant", "Sprout Seedling", "Seed", "Leaf", "Plant", "Stem", 
+                   "Flower", "Plant", "Fruit", "Seed", "Leaf",
+                   "Seed", "Plant", "Plant", "Leaf", "Root",
+                   "Fruit", "Fruit", "Fruit Juice", "Fruit", "Fruit Juice",
+                   "Seed", "Leaves", "Plant", "Fruit", "Shoot", 
+                   "Silk Stigma Style", "Fruit", "Seed", "Leaf", "Rhizome",
+                   "Seed", "Fruit", "Seed", "Seed Coat", "Plant",
+                   "Seed", "Seed", "Plant", "Root", "Seed", 
+                   'Seed', 'Seed', "Fruit", "Fruit Juice", "Fruit Epidermis", 'Pericarp',
+                   'Fruit', "Leaf", "Seed", "Plant", "Leaf",
+                   'Fruit', 'Pericarp', "Plant", "Leaf","Plant", "Leaf",
+                   'Seed', "Plant", "Fruit", "Plant", "Leaf", "Stem",
+                   "Seed", "Seed", "Fruit", "Seed", "Fruit",
+                   "Fruit", "Fruit", "Fruit", "Fruit", "Pericarp",
+                   "Fruit", "Fruit Juice", "Fruit Juice", "Root", "Fruit",
+                   'Tuber', 'Tuber Epidermis', 'Plant', 'Leaf', "Plant", "Leaf",
+                    "Seed", 'Exocarp', 'Fruit Juice', 'Fruit', 'Seed',
+                   'Rhizome', "Root", "Fruit", "Plant", 'Bark',
+                   'Leaf', 'Plant', 'Fruit', 'Shoot', 'Fruit'))
+```
+
+
+### Filter Duke Data to include desired food parts.
+```{r}
+result = duke %>%
+  filter(food_id %in% desired_orig_food_parts$food_id & 
+           orig_food_part %in% desired_orig_food_parts$desired_part)
+
+write.csv(result, 'FooDB/Duke_Filtered_Content.csv', row.names = FALSE)
+```
+
+

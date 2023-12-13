@@ -1,0 +1,92 @@
+---
+title: "E1C - Yogurt Corrections"
+author: "Stephanie Wilson"
+date: "September 2023"
+output: html_document
+---
+
+__Overview__
+After the appearance of yogurt in the top ten food contributors to total polyphenol intake (Before 9/15/23), the yogurt entry needs inspected. This scripts assessed what goes into yogurt and identified that soy yogurt entries were simultaneously included with food_id 634, yogurt and food_id 792, soy yogurt causing yogurt (634) to be inflated. 
+
+__Purpose__
+Incorrect yogurt entries are identified for removal and exported as a csv. 
+
+__Input__
+  - *Content.csv.* - FooDB data (version 1) downloaded Sept 2022 from FooDB.ca/downloads
+  - *Food_updated.csv* - 01_FooDB_FooDBCleaning.ipynb
+  
+__Output__
+  - *yogurt_soy_correction.csv* 
+
+Load Data
+```{r}
+Content = read.csv("FoodB/Content.csv.bz2", header=TRUE) %>% 
+  filter(!orig_food_common_name == 'Lipid from Arabidopsis (PathBank)') %>%
+  filter(!food_id == 16420)
+
+Food = read.csv('FooDB/Food_updated.csv') %>%
+  select(c(id, name, public_id)) %>%
+  dplyr::rename('food_id' = 'id',
+         'food_name' = 'name',
+         'food_public_id' = 'public_id')
+
+Compound = read.csv('FooDB/Compound.csv.bz2') %>%
+  select(c(id, public_id, name))
+```
+
+### 1) Generate unique lists of original food entries underlying each FooDB food_id
+```{r}
+distinct = Content %>%
+  filter(source_type == 'Compound') %>%
+  select(c(id, food_id, orig_food_common_name)) %>%
+  # Add Food Names
+  left_join(Food, by = 'food_id') %>%
+  distinct(food_id, food_name, orig_food_common_name, .keep_all = TRUE) %>%
+  arrange(food_id) %>%
+
+  # Which original foods occur across multiple foods? Highlighted by a count >2
+  mutate(count = table(orig_food_common_name)[orig_food_common_name])
+```
+
+### 2) Examine Yogurt, Isolate Errors
+```{r}
+yogurt = distinct %>%
+  filter(food_id %in% c(634, 792)) %>%
+  
+  # Isolate Duplicates
+  filter(count ==2) %>%
+  
+  # Remove Fructose as unrelate
+  filter(!orig_food_common_name == 'Fructose')
+
+yogurt
+```
+
+Where is the content data? Are they duplicated across 634 and 792?
+```{r}
+yogurt_compounds = Content %>%
+  filter(source_type == 'Compound') %>%
+  filter(food_id %in% c(634, 792)) %>%
+  filter(orig_food_common_name %in% yogurt$orig_food_common_name) %>%
+  #Add Compound Names
+  left_join(Compound, by = c('source_id' = 'id')) %>%
+  relocate(public_id, name, .after = source_id) %>% 
+  left_join(Food) %>%
+  select(id, source_id, public_id, name, source_type, food_id, orig_food_common_name,
+         orig_content, orig_unit, citation) %>%
+  arrange(orig_food_common_name, source_id)
+
+yogurt_compounds
+```
+
+It does indeed look like content values across food_ids are the same, so we are okay to remove soy entries from 634. We will need the orig_food_common_name in order to remove this from the main content file
+
+Export the file
+```{r}
+# Isolate the entries that need removed
+yogurt_corrections = yogurt_compounds %>% 
+  filter(!food_id == 792)
+
+write.csv(yogurt_corrections, 'FooDB/yogurt_soy_correction.csv', row.names = FALSE)
+```
+

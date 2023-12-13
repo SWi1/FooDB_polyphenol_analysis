@@ -1,0 +1,290 @@
+---
+title: "FIG_Participant_Polyphenol_Summary"
+author: "Stephanie Wilson"
+date: "September 2023"
+output: html_document
+---
+
+# Summarized Polyphenol Figure by Covariate Bins
+
+This script looks at intakes of total polyphenols and polyphenolic classes and provides a summary across age, BMI, and sex bins. This summary is plotted as a stacked bar plot. 
+
+__Inputs__. 
+- *PP_Raw* - polyphenol content data linked to dietary records, Output from A0B_Exploration.Rmd.
+- *Polyphenol taxonomy* - taxonomic classifications of polyphenols. Output from A0A_Scrape_Taxonomy.Rmd.
+- *merged variables* - metadata from the FL100 study cohort. Output from A0_Merge_Variables.Rmd
+  
+__Outputs__. 
+- *Stacked Bar Plot* - Polyphenol intake summaries With Sample sizes across covariate bins
+  
+
+Load packages
+```{r message = FALSE}
+library(tidyverse); library(Rfit); library(Hmisc); library(corrplot); library(ggpubr);
+library(ggrain); library(viridis); library(ggridges); library(gt); library(wesanderson)
+```
+
+Load Functions
+```{r}
+# Summary stats by group
+source('Functions/calculate_summary_stats.R')
+
+# Function for summarizing polyphenol classes across variables of interest.
+# Assumes data input has class polyphenol data and variables of interest
+summarize_class_intake = function(data, group_column) {
+  result = data %>%
+    select(c(klass_label, Avg_klass_ppintake, {{group_column}})) %>%
+    
+    # Summarize across all participants
+    group_by({{group_column}}, klass_label) %>%
+    mutate(overall_avg_klass_ppintake = mean(Avg_klass_ppintake, na.rm = TRUE)) %>%
+    ungroup() %>%
+    distinct({{group_column}}, klass_label, .keep_all = TRUE) %>%
+    select(-Avg_klass_ppintake) %>%
+    
+    # Summarize across group_column bins
+    group_by({{group_column}}) %>%
+    mutate(proportion = overall_avg_klass_ppintake / sum(overall_avg_klass_ppintake)) %>%
+    ungroup() %>%
+    
+    # Filter out zeros
+    filter(!overall_avg_klass_ppintake == 0) %>%
+    arrange(desc(overall_avg_klass_ppintake))
+  
+  return(result)
+}
+```
+
+
+```{r Load Data}
+#Define compound outliers
+removal_list = factor(c('Chinese tannin', 'alpha-Viniferin'))
+
+PP_Raw = read.csv('data/FL100_PP_Raw.csv') %>%
+  filter(!compound_name %in% removal_list)
+
+# Load the Binning Data
+bindata = read.csv('data/FL100_merged_variables.csv') %>%
+  select(c(UserName, Sex, Age.Category, BMI.Category, avg_total_kcal)) %>%
+  rename('BMI' = 'BMI.Category',
+         'Age' = 'Age.Category') %>%
+  
+  #Filter in those who had quality controlled recalls
+  filter(UserName %in% PP_Raw$UserName) %>%
+  
+  #Recode variables for clarity
+  mutate(Age = recode_factor(Age,
+                             "1" = "18 - 33.99",
+                             "2" = "34 - 49.00",
+                             "3" = "50 - 65"),
+         BMI = recode_factor(BMI,
+                             "1" = "18.5 - 24.99",
+                             "2" = "25 - 29.99",
+                             "3" = "30 - 39.99"))
+
+# Polyphenol Taxonomy
+tax = read.csv('FooDB/FooDB_phenols_taxonomy.csv')
+```
+
+### 1) Bin Size
+```{r}
+table(bindata$Sex)
+table(bindata$BMI)
+table(bindata$Age)
+```
+
+### 2) Total Polyphenol Breakdown
+
+Obtain total intakes
+```{r}
+total_daily_intake = PP_Raw %>%
+  group_by(UserName, RecallNo) %>%
+  mutate(total_daily_intake_mg = sum(pp_consumed, na.rm = TRUE)) %>%
+  select(c(UserName, RecallNo, total_daily_intake_mg)) %>%
+  ungroup() %>%
+  group_by(UserName) %>%
+  mutate(Avg_Total_Daily_PP_Intake_mg = mean(total_daily_intake_mg, na.rm = TRUE)) %>%
+  distinct(UserName, .keep_all = TRUE) %>%
+  select(-c(RecallNo, total_daily_intake_mg)) %>%
+  left_join(bindata, by = 'UserName') %>%
+  arrange(UserName)
+```
+
+Age Summary
+```{r}
+calculate_summary_stats(data = total_daily_intake, group_var = Age, summary_var = Avg_Total_Daily_PP_Intake_mg)
+```
+
+BMI Summary
+```{r}
+calculate_summary_stats(data = total_daily_intake, group_var = BMI, summary_var = Avg_Total_Daily_PP_Intake_mg)
+```
+
+Sex Summary
+```{r}
+calculate_summary_stats(data = total_daily_intake, group_var = Sex, summary_var = Avg_Total_Daily_PP_Intake_mg)
+```
+
+
+### 3) CLASS SUMMARY
+```{r}
+# Average class consumed for each participant
+class_analysis = PP_Raw %>%
+  left_join(tax) %>%
+  left_join(bindata) %>%
+  
+  #Average per recall
+  group_by(UserName, RecallNo, klass) %>%
+  mutate(klass_ppintake = sum(pp_consumed, na.rm = TRUE)) %>%
+  select(c(UserName, Age, BMI, Sex, RecallNo, klass, 
+           klass_ppintake, avg_total_kcal)) %>%
+  ungroup() %>%
+  
+  #Averages across recalls for each food
+  group_by(UserName, klass) %>%
+  mutate(Avg_klass_ppintake = mean(klass_ppintake/(avg_total_kcal/1000), 
+                                   na.rm = TRUE)) %>%
+  distinct(UserName, klass, .keep_all = TRUE) %>%
+  select(-c(RecallNo, klass_ppintake)) %>%
+  group_by(klass) %>%
+  add_count(klass) %>% #how many users per class
+  mutate(overall_avg_klass_ppintake = mean(Avg_klass_ppintake, na.rm = TRUE)) %>%
+  ungroup() %>%
+  
+  # Add new label for plotting
+  mutate(klass_label = ifelse(klass %in% c('Flavonoids', 'Organooxygen compounds', 
+                                           'Benzene and substituted derivatives', 
+                                           '2-arylbenzofuran flavonoids',
+                                           'Cinnamic acids and derivatives',
+                                           'Alcohols and polyols', 'Isoflavonoids', 
+                                           'Tannins', 'Phenols'), klass, 'Other'))
+```
+
+
+
+What is listed as other? 
+ - others_list: Must be non-zero
+ - others_zero_list: Must be zero
+```{r}
+others_list = class_analysis %>% filter(klass_label == 'Other' & overall_avg_klass_ppintake> 0) %>% select(c(klass_label, klass)) %>% distinct(klass, .keep_all = TRUE) %>% arrange(klass) %>% mutate(klass = str_to_lower(klass))
+
+cat('Non-Zero Classes\n', paste(others_list$klass, collapse = ', '))
+
+others_zero_list = class_analysis %>% filter(klass_label == 'Other' & overall_avg_klass_ppintake == 0) %>% select(c(klass_label, klass)) %>% distinct(klass, .keep_all = TRUE) %>% arrange(klass) %>% mutate(klass = str_to_lower(klass))
+
+cat('\n\nZeroed Classes\n', paste(others_zero_list$klass, collapse = ', '))
+```
+
+
+
+How many classes did participants eat?
+```{r}
+participantclass = class_analysis %>%
+  group_by(UserName) %>%
+  add_count(UserName, name = 'classes_consumed') %>%
+  select(UserName, classes_consumed) %>%
+  distinct(UserName, .keep_all = TRUE)
+```
+
+
+
+### 4) Prepare Dataframes
+
+Total
+```{r}
+#classes across all participants
+summary_total = class_analysis %>%
+  select(c(klass_label, overall_avg_klass_ppintake)) %>%
+  distinct(klass_label, .keep_all = TRUE) %>%
+  arrange(desc(overall_avg_klass_ppintake)) %>%
+  filter(!overall_avg_klass_ppintake == 0) %>%
+  mutate(proportion = overall_avg_klass_ppintake/sum(overall_avg_klass_ppintake),
+         axis_label = 'All') %>%
+  arrange(desc(proportion))
+```
+
+```{r}
+message('Energy-Adjusted Intakes\nMean: ', mean(summary_total$Avg_klass_ppintake/(class_analysis$avg_total_kcal/1000)),
+        '\nStandard Error: ', sd(class_analysis$Avg_klass_ppintake)/sqrt(nrow(class_analysis)))
+```
+
+Age, BMI, Sex
+```{r}
+#classes intake across different covariates
+summary_age = summarize_class_intake(data = class_analysis, group_column = Age) %>%
+  mutate(axis_label = paste0('Age: ', Age)) %>%
+  select(-Age)
+
+summary_BMI = summarize_class_intake(data = class_analysis, group_column = BMI) %>%
+  mutate(axis_label = paste0('BMI: ', BMI)) %>%
+  select(-BMI)
+
+summary_Sex = summarize_class_intake(data = class_analysis, group_column = Sex) %>%
+  mutate(axis_label = paste0('Sex: ', Sex)) %>%
+  select(-Sex)
+```
+
+Combine all dataframes for a singular plot
+```{r}
+full_summary = full_join(summary_total, summary_age) %>%
+  full_join(summary_BMI) %>%
+  full_join(summary_Sex)
+```
+
+
+### 5) PLOTS
+
+Labels
+```{r}
+# Find sum for each level for labelling at the top of the bar chart
+total_labels = full_summary %>%
+  group_by(axis_label) %>%
+  mutate(total = round(sum(overall_avg_klass_ppintake), digits =0)) %>%
+  ungroup() %>%
+  distinct(axis_label, .keep_all = TRUE) %>%
+  mutate(size = c('(n = 350)', '(n = 112)', '(n = 121)', '(n = 117)', 
+                            '(n = 125)', '(n = 135)', '(n = 90)', '(n = 186)',
+                            '(n = 164)')) %>%
+  mutate(axis_label2 = paste(axis_label, size, sep = '\n'))
+
+# Update the x-axis tick labels to include sample size
+full_summary2 = total_labels %>%
+  select(axis_label, axis_label2) %>%
+  right_join(full_summary)
+```
+Colors
+```{r}
+# Select 10 colors from the Asteroid City 3 color palette
+wes_colors = wes_palette("AsteroidCity3", type = 'continuous', 10)
+```
+
+
+```{r}
+summary_plot = ggplot(full_summary2, aes(x = axis_label2, y =  overall_avg_klass_ppintake, fill = klass_label)) +
+  geom_bar(stat = "identity", position = position_stack()) +
+  geom_text(data = total_labels, aes(x = axis_label2, y = total, label = total, 
+                                     hjust = 'middle'), nudge_y = 70, size =3) +
+  labs(x = "", y = "Average Intake (mg/1000 kcal)", title = "") +
+  theme_classic() +
+  labs(fill = 'Polyphenol Class') +
+  scale_fill_manual(values = wes_colors)+
+  coord_flip() +
+  scale_x_discrete(limits = c("Sex: Male\n(n = 164)", "Sex: Female\n(n = 186)", 
+                              "BMI: 30 - 39.99\n(n = 90)", "BMI: 25 - 29.99\n(n = 125)",
+                              "BMI: 18.5 - 24.99\n(n = 135)", "Age: 50 - 65\n(n = 112)",
+                              "Age: 34 - 49.00\n(n = 117)", "Age: 18 - 33.99\n(n = 121)",
+                              "All\n(n = 350)")) + 
+  theme(axis.title.x = element_text(face = "bold", size = 12),
+         legend.title = element_text(face = "bold"))
+
+summary_plot
+```
+
+Save plots
+```{r}
+ggsave(plot = summary_plot, filename = 'images/polyphenol_summary_stackedbar.png', 
+        width = 7, height = 4, units = 'in', dpi = 300)
+ggsave(plot = summary_plot, filename = 'images/polyphenol_summary_stackedbar.pdf', 
+        width = 7, height = 4, units = 'in')
+```
+

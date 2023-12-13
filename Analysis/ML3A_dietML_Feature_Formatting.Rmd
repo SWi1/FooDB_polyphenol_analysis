@@ -1,0 +1,159 @@
+---
+title: "diet ML - Feature Formatting"
+author: "Stephanie Wilson"
+date: "November 2023"
+output: html_document
+---
+
+# Summarize and format feature names from dietML runs
+
+This script pools output from multiple RDS files, which are a key output file from the dietML program built by Dr. Andrew Oliver. Each RDS file is a packaged R environment which contains numerous dataframes. This script:
+
+1) Extract and formats feature names
+2) Pull out SHAP importance data
+3) Create Directionality Plot
+
+__Inputs__. 
+- RDS files from dietML output
+- *rds_path_subclinical_names.csv*
+- *HFE_pooled_selected_features_longform.csv*
+- *metadata* - from ML2A_dietML_meta_Prep.Rmd
+  
+__Outputs__. 
+- *dietML_top_features.csv*, top model features based on feature importance.
+- Plots with model SHAP summaries.
+  
+```{r LOAD PACKAGES, message=FALSE}
+library(tidyverse); library(rvest); library(wesanderson); library(xml2); library(stringr); library(Hmisc); library(ggpubr);library(grid)
+```
+
+Load Functions
+```{r}
+source('Functions/find_rds.R')
+source('Functions/extract_rds_data.R')
+```
+
+
+Load Data
+```{r}
+#Load pooled taxaHFE output and metadata variable list
+taxahfe_output = read.csv('output/HFE_pooled_selected_features_longform.csv')
+metadata_full = str_to_lower(colnames(read.csv('HFE/Subclinical/NEO_dietML/merged_GI_subclinical.csv')))
+rds_info = read.csv('output/rds_path_subclinical_names.csv')
+```
+
+### 1) Format Feature Names
+```{r}
+#Clean the compound data first
+taxa = taxahfe_output %>%
+  select(c(features, formatted_name, level)) %>%
+  # Remove duplicate entries
+  distinct(features, .keep_all = TRUE) %>%
+  mutate(level2 = case_when(level == 'Phylum' ~ 'Superclass',
+                            .default = level),
+    feature_publish = ifelse(level2 %in% c('Class', 'Superclass'), 
+                                  paste(formatted_name, ' (', level2, ')', sep = ''), 
+                                  formatted_name)) %>%
+  select(c(features, feature_publish)) %>%
+  rename('feature' = 'features')
+```
+
+ 
+Format metadata names
+```{r}
+features = data.frame(feature = metadata_full, 
+                      feature_publish = c('Subject', 'Age', 'Sex, Male', 'BMI',
+                                          'Education',  'Avg Total Fiber', 
+                                          'Avg Total Protein',  
+                                          'ASA24 HEI Total Score')) %>%
+  full_join(taxa) %>%
+  mutate(feature = ifelse(feature == 'sex', "sex_male", feature))
+```
+
+### 2) Pull out SHAP importance data
+
+Run Loop to pull out data from each of our RDS files
+```{r warning = FALSE}
+shap_data = list()
+
+# Loop through each RDS file and extract the data
+for (i in seq_along(rds_info$path)) {
+  file_path = rds_info$path[i]
+  extracted_data = extract_data_from_rds(file_path)
+  shap_data[[i]] = extracted_data
+}
+```
+
+Formatting
+```{r}
+# Use map2_dfr to iterate over each list and add the label to the MeanShaps dataframe
+merged_MeanShaps = map2_dfr(shap_data, rds_info$label, add_label_to_MeanShaps) %>%
+  #Remove the untransformed CRP Data and Keep the Transformed CRP Data
+  filter(!label %in% c('Untransformed_Full_CRP', 'Untransformed_Mod_CRP')) %>%
+  
+  # Extract the text between the first and second underscore
+  mutate(label = gsub("Untransformed|Transformed", "Continuous", label), 
+         # label = gsub("LOHI", "Classifier", label), # no longer used
+         label_model = str_extract(label, "_(.*?)_"),
+         
+         # Remove the underscores from the result
+         label_model = gsub('_', '', label_model),
+         
+         #Extract the last three characters
+         marker = substr(label, nchar(label) - 2, nchar(label)),
+         
+         #Simplify the phenolic data to not show full taxonomy
+         feature_simple = ifelse(feature %in% metadata_full, feature, 
+                                 gsub(".*_(.*_.*)", "\\1", feature)),
+         #Pull out data on how the response was handled.
+         response_type = sub("^(.*?)_.*", "\\1", label),
+         
+         #Indicate directionality
+         Direction = ifelse(Avg_SHAP > 0, 'Positive', 'Negative'),
+         axis_label = sub("_[^_]*$", "", label),
+         
+         #Relevel markers
+         marker = factor(marker, levels = c("CRP", "CAL", "MPO", "NEO"))) %>%
+           
+  left_join(features, by = 'feature') %>%
+  relocate(feature_publish, .after= 'feature') %>%
+  select(-c(marker, label_model)) %>%
+  rename('marker' = 'response_type')
+```
+
+```{r}
+top_features = merged_MeanShaps %>%
+  #For each model outcome combination
+  group_by(marker) %>%
+  #Extract top ten features based off Importance
+  top_n(n = 5, wt = Importance) %>%
+  arrange(desc(Importance))
+
+write.csv(top_features, 'output/dietML_top_features.csv', row.names = FALSE)
+```
+
+
+### 3) Directionality Plot
+
+Model plots in publication are represented by beeswarm plots. 
+
+
+```{r}
+PLOT = ggplot(top_features, aes(x = marker, y = reorder(feature_publish, Importance), fill = Direction)) + 
+  labs(x = "", y = '', 
+       subtitle = '')+
+  geom_point(aes(colour = factor(Direction)), size = 2) +
+  theme_bw() + 
+  coord_fixed(ratio = 0.3) + 
+  guides(color = guide_legend(title = "Direction")) + 
+  scale_color_manual(values = c("#CB7A5C", "#5785C1")) + 
+  theme(legend.position = 'bottom',
+        legend.margin = margin(0, 0, 0, 0),
+      legend.spacing.x = unit(0, "mm"),
+      legend.spacing.y = unit(0, "mm"),
+        plot.margin = margin(c(0, 0, 0, 0)))
+
+PLOT
+```
+
+

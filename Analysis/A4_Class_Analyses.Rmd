@@ -1,0 +1,275 @@
+---
+title: "A4_ANCOVAs_ClassTransformed"
+author: "Stephanie Wilson"
+date: "September 2023"
+output: pdf_document
+---
+
+# Class Level Analyses with Inflammation Markers
+
+__Inputs__
+  - FL100_merged_variables.csv - Output from Other_Merged_Variables
+  - taxonomy.csv - taxonomic classifications for polyphenolic compounds
+  - FL100_PP_Raw.csv - polyphenolic data for each compound, recall, and participant
+  
+__Summary__
+The following code runs repeated ANCOVA tests with multiple testing adjustment in regards to assessment of polyphenolic class and five outcomes (CRP, LBP, NEO, MPO, CAL). This is done both with and without dietary predictors (fiber intake and total HEI score). Each polyphenolic class is transformed by the BestNormalize recommendation. In essence, the code runs as follows in an example without dietary predictors:
+
+  Outcome1 ~ transformation(class1) + Age + Sex + BMI
+  Outcome1 ~ transformation(class2) + Age + Sex + BMI
+  ...
+  Outcome5 ~ transformation(class1) + Age + Sex + BMI
+  
+1) Best Normalize on Taxa
+2) Run ANCOVAs for each Outcome
+3) Merge Data Into One File
+
+__Output__
+- All_ANCOVA_results.csv
+- FooDB_phenol_content_DailyClassAvg.csv
+
+Load packages
+```{r warning = FALSE, message = FALSE}
+#Load packages
+library(tidyverse); library(car); library(bestNormalize); library(stringr)
+
+# ANCOVA with multiple testing adjustments for analyzing multiple taxa on outcomes
+source('Functions/multipleANCOVA.R')
+source('Functions/find_transformation.R')
+```
+
+Load Data
+```{r}
+taxonomy = read.csv('FooDB/FooDB_phenols_taxonomy.csv') %>%
+  select(c(compound_public_id, kingdom:klass, compound_name)) %>%
+  mutate(klass = ifelse(klass =='', paste('Unclassified', superklass), klass))
+
+#Define compound outliers
+removal_list = factor(c('Chinese tannin', 'alpha-Viniferin'))
+
+# Load in Dietary Polyphenol Content, 
+# Raw is Each compound for each food in each recall by participant
+PP_Raw = read.csv('data/FL100_PP_Raw.csv') %>%
+  filter(!compound_name %in% removal_list)
+```
+
+### 1) Calculate Average Intake for every taxonomic class from each participant
+```{r}
+class =  PP_Raw %>%
+  left_join(taxonomy, by = 'compound_public_id') %>%
+  
+  #Group by Taxonomic Class
+  group_by(UserName, RecallNo, klass) %>%
+  
+  #gets the sum of each compound for each participant's recall
+  mutate(klass_intake_mg = sum(pp_consumed, na.rm = TRUE)) %>% 
+  select(c(UserName, RecallNo, klass, klass_intake_mg)) %>%
+  ungroup()%>%
+  
+  #Remove duplicates since we've summed each polyphenol per recall
+  distinct(UserName, RecallNo, klass, .keep_all = TRUE) %>%
+  
+  #Average polyphenol intake across recalls for each compound
+  group_by(UserName, klass) %>%
+  mutate(Avg_klass_intake = mean(klass_intake_mg)) %>%
+  ungroup() %>%
+  
+  #Remove duplicates
+  distinct(UserName, klass, .keep_all = TRUE) %>%
+  select(c(UserName, klass, Avg_klass_intake)) %>%
+  filter(!is.na(klass)) %>%
+  
+  #Transpose dataframe where each column is a participant
+  pivot_wider(id_cols = UserName, names_from = klass, 
+              values_from = Avg_klass_intake, values_fill = 0) %>%
+  
+  #remove the columns that are just zeros
+  select(-c('Unclassified':'Thiolanes'))
+```
+
+
+```{r}
+write.csv(class, 'FooDB/FooDB_phenol_content_DailyClassAvg.csv', 
+          row.names = FALSE)
+```
+
+
+Class Filtering, Remove Taxa with more than 80% as zeros.
+```{r}
+toremove = as.data.frame(colSums(class[ , -1] == 0)) %>%
+  rename('zero_counts' = 1) %>%
+  mutate(proportion = zero_counts/350) %>%
+  rownames_to_column(var = 'Tax_class') %>%
+  filter(proportion > 0.2) %>%
+  select(Tax_class)
+
+#Convert from dataframe.
+remove = toremove$Tax_class
+
+# Update class to include this filtering
+updated_class = class %>%
+  select(!all_of(toremove$Tax_class))
+```
+
+
+Load the metadata and merge with taxonomic data.
+```{r}
+
+# Multiple files including ASA averages for kcal and fiber
+merged = read.csv('data/FL100_merged_variables.csv') %>%
+  select(c(UserName, Age, Sex, BMI, avg_total_kcal, avg_total_fiber,
+           hei_asa24_totalscore, After24h, CRP_BD1, plasma_lbp_bd1,
+           fecal_calprotectin, fecal_mpo, fecal_neopterin)) %>%
+  mutate(Sex = factor(Sex),
+         After24h = factor(After24h)) %>%
+  filter(!is.na(avg_total_kcal)) %>%
+  left_join(updated_class, by = 'UserName')
+
+merged_fecal = merged %>%
+  filter(!After24h == 1) %>% #removes 30 individuals 
+  filter(!is.na(fecal_neopterin))
+
+merged_blood = merged %>%
+  filter(!is.na(CRP_BD1))
+```
+
+  
+### 1) Best Normalize on Taxa
+
+```{r}
+# Create a vector of taxa names
+## Class Names are the same for both blood and fecal datasets
+class_names = colnames(merged_blood)[14:28]
+```
+
+
+Find the recommended bestNormalize transformation for each of polyphenolic classes.
+```{r}
+blood_transformations = find_transformation(data = merged_blood, class_names = class_names)
+fecal_transformations = find_transformation(data = merged_blood, class_names = class_names)
+
+# If there are two transformations for Flavonoids
+#blood_transformations = blood_transformations %>% filter(!Class == 'Flavonoids' | !transformation == 'yeojohnson')
+#blood_transformations = blood_transformations %>% filter(!Class == 'Flavonoids' & !transformation == 'yeojohnson')
+```
+
+
+### 2) ANCOVAs
+
+#### CRP
+```{r}
+CRP = multipleANCOVA(data = merged_blood, class_names = class_names, outcome = merged_blood$CRP_BD1, diet_control = FALSE, 
+                     transformations = blood_transformations)
+
+CRPdiet = multipleANCOVA(data = merged_blood, class_names = class_names, outcome = merged_blood$CRP_BD1, diet_control = TRUE,
+                         transformations = blood_transformations)
+
+CRP$Outcome = 'CRP'
+CRPdiet$Outcome = 'CRP'
+```
+
+#### LBP
+```{r}
+LBP = multipleANCOVA(data = merged_blood, class_names = class_names, outcome = merged_blood$plasma_lbp_bd1, diet_control = FALSE,
+                      transformations = blood_transformations)
+
+LBPdiet = multipleANCOVA(data = merged_blood, class_names = class_names, outcome = merged_blood$plasma_lbp_bd1, diet_control = TRUE,
+                          transformations = blood_transformations)
+
+LBP$Outcome = 'LBP'
+LBPdiet$Outcome = 'LBP'
+```
+
+#### NEO
+```{r}
+NEO = multipleANCOVA(data = merged_fecal, class_names = class_names, outcome = merged_fecal$fecal_neopterin, diet_control = FALSE,
+                     transformations = fecal_transformations)
+
+NEOdiet = multipleANCOVA(data = merged_fecal, class_names = class_names, outcome = merged_fecal$fecal_neopterin, diet_control = TRUE,
+                         transformations = fecal_transformations)
+
+NEO$Outcome = 'NEO'
+NEOdiet$Outcome = 'NEO'
+```
+
+#### CAL
+```{r}
+CAL = multipleANCOVA(data = merged_fecal, class_names = class_names, outcome = merged_fecal$fecal_calprotectin, diet_control = FALSE,
+                     transformations = fecal_transformations)
+
+CALdiet = multipleANCOVA(data = merged_fecal, class_names = class_names, outcome = merged_fecal$fecal_calprotectin, diet_control = TRUE,
+                         transformations = fecal_transformations)
+
+CAL$Outcome = 'CAL'
+CALdiet$Outcome = 'CAL'
+```
+
+#### MPO
+```{r}
+MPO = multipleANCOVA(data = merged_fecal, class_names = class_names, outcome = merged_fecal$fecal_mpo, diet_control = FALSE,
+                     transformations = fecal_transformations)
+
+MPOdiet = multipleANCOVA(data = merged_fecal, class_names = class_names, outcome = merged_fecal$fecal_mpo, diet_control = TRUE,
+                         transformations = fecal_transformations)
+
+MPO$Outcome = 'MPO'
+MPOdiet$Outcome = 'MPO'
+```
+
+
+### 3) Merge Data
+
+```{r message = FALSE}
+NoDiet = CRP %>%
+  full_join(LBP) %>%
+  full_join(NEO) %>%
+  full_join(CAL) %>%
+  full_join(MPO) %>%
+  relocate(Outcome, .before = Class) %>%
+  mutate(diet_control = "No")
+
+WithDiet = CRPdiet %>%
+  full_join(LBPdiet) %>%
+  full_join(NEOdiet) %>%
+  full_join(CALdiet) %>%
+  full_join(MPOdiet) %>%
+  relocate(Outcome, .before = Class) %>%
+  mutate(diet_control = "Yes")
+```
+
+
+Combine both datasets and Format for Cleaner Presentation
+```{r}
+All_ANCOVA_results = full_join(NoDiet, WithDiet) %>%
+  relocate(diet_control, .after = "Outcome") %>% 
+  arrange(Adjusted_P_Value) %>%
+  mutate(diet_control = case_when(
+      diet_control == 'Yes' ~ "With Dietary Predictors",
+      diet_control == 'No' ~ "Without Dietary Predictors",
+      TRUE ~ diet_control),
+      Class = str_replace_all(Class, "\\.", " "),
+      Class = ifelse(Class == "X2 arylbenzofuran flavonoids", 
+                     '2 arylbenzofuran flavonoids', Class),
+      Class_transformation = paste("(", Class_transformation, ")", sep = "")) %>%
+      unite('Class_label',Class:Class_transformation, sep = ' ',remove = FALSE) %>%
+  #filter(!Variable == '(Intercept)') %>%
+  
+  # Nicely formatted Variable Names
+  mutate(Variable = ifelse(Variable == 'SexMale', 'Sex, Male', 
+                    ifelse(Variable == 'class_transform', 'Polyphenol Class Intake',
+                    ifelse(Variable == 'avg_total_fiber', 'Total Fiber',
+                    ifelse(Variable == 'hei_asa24_totalscore', 'ASA24 HEI Total Score',
+                           Variable)))),
+         Significance =  ifelse(Adjusted_P_Value < 0.05, 'TRUE', 'FALSE'),
+    
+    # If a covariate is important, tag it with a special character    
+    MarkerSig = ifelse(Variable == 'Age' & Significance == TRUE, "\u2020",
+                ifelse(Variable =='BMI' & Significance == TRUE, "*",
+                ifelse(Variable =='Sex, Male' & Significance == TRUE, '\u00B6',
+                ifelse(Variable == 'Total Fiber' & Significance == TRUE, '#',
+                ifelse(Variable == 'ASA24 HEI Total Score' & Significance == TRUE,
+                                   '\u2660', ''))))))
+
+write.csv(All_ANCOVA_results, 'output/All_ANCOVA_results.csv', row.names = FALSE)
+```
+

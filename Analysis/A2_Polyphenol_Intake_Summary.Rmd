@@ -1,0 +1,239 @@
+---
+title: "Total Polyphenol Intake Analysis and Food Contributors"
+author: "Stephanie Wilson"
+date: "March 2023"
+output: html_document
+---
+
+# Total Polyphenol Intake Analysis and Food Contributors
+
+__Required Input Files__.                          
+  - *FL100_PP_Raw.csv* - Polyphenol content for each compound in foods listed in each recall test. Output from A0B_Exploration.Rmd.
+  - *FL100_PP_DailyAveraged.csv* - Polyphenol content for each compound in foods, averaged across each participant's recalls. Output from A0B_Exploration.Rmd.
+  - *FL100_Food_Polyphenol_Sum.csv* - Total polyphenol content for each food, for each recall.
+  - *FooDB_phenols_taxonomy.csv* - Taxonomic classifications of polyphenols. Output from A0A_Scrape_Taxonomy.Rmd.
+  
+__Information__. 
+This script focuses on total polyphenol intake, specifically:
+  1) Examines relationship between Energy-Adjusted Total Polyphenol Intake and Age, Sex, BMI, and Total HEI score
+  2) Food Contributors of Total Polyphenol intake (Publication Table)
+  3) Compound Class Contributors of Polyphenol Intake.
+
+__Output__. 
+ - *Ingredient_Intake_Frequency.csv*
+ - *top_foodcontributors_table.csv*, Visual and Table: Top 10 Food Contributors of Total Polyphenol intake 
+
+```{r Load packages, message = FALSE}
+library(tidyverse); library(Rfit); library(Hmisc); library(corrplot); library(ggpubr); library(ggrain); library(viridis); library(ggridges); library(gt)
+```
+
+
+```{r Load Data}
+#Define compound outliers
+removal_list = factor(c('Chinese tannin', 'alpha-Viniferin'))
+
+PP_Raw = read.csv('data/FL100_PP_Raw.csv') %>%
+  filter(!compound_name %in% removal_list)
+
+PP_Daily = read.csv('data/FL100_PP_DailyAveraged.csv') %>%
+  filter(!compound_name %in% removal_list)
+
+#multiple files including ASA averages for kcal and fiber
+merged = read.csv('data/FL100_merged_variables.csv') %>%
+  mutate(Sex = factor(Sex))
+
+tax = read.csv('FooDB/FooDB_phenols_taxonomy.csv')
+```
+
+
+### 1) Do total daily intakes vary by Age, Sex, or BMI?
+
+Sum polyphenol intake (mg) consumed for each recall, for each person, then averaged across recalls.
+ - No compound or food clarity.
+```{r}
+#total_daily_intake = total daily intake (mg) for each participant's recall
+total_daily_intake = PP_Raw %>%
+  group_by(UserName, RecallNo) %>%
+  mutate(total_daily_intake_mg = sum(pp_consumed, na.rm = TRUE)) %>%
+  select(c(UserName, RecallNo, total_daily_intake_mg)) %>%
+  ungroup() %>%
+  group_by(UserName) %>%
+  mutate(Avg_Total_Daily_PP_Intake_mg = mean(total_daily_intake_mg, na.rm = TRUE)) %>%
+  distinct(UserName, .keep_all = TRUE) %>%
+  select(-c(RecallNo, total_daily_intake_mg)) %>%
+  left_join(merged, by = 'UserName') %>%
+  arrange(UserName)  %>%
+  ungroup()
+
+totalkcal = total_daily_intake %>%
+  select(c(UserName, avg_total_kcal))
+```
+
+Summary statistics of Covariates
+```{r}
+covariates = total_daily_intake %>%
+  select(c(Age, Sex, BMI))
+
+summary(covariates)
+sd(covariates$Age)
+sd(covariates$BMI)
+```
+
+
+### 1) Examine total polyphenol intake
+
+```{r}
+# Age, BMI, Sex only model
+covariates.rfit = rfit(Avg_Total_Daily_PP_Intake_mg/(avg_total_kcal/1000) ~ Age + BMI + Sex, data = total_daily_intake)
+summary(covariates.rfit)
+```
+
+```{r}
+# With fiber and HEI total score
+covariates.rfit.HEI = rfit(Avg_Total_Daily_PP_Intake_mg/(avg_total_kcal/1000) ~ Age + BMI + Sex + avg_total_fiber + hei_asa24_totalscore, data = total_daily_intake)
+summary(covariates.rfit.HEI)
+```
+
+
+### 2) Food Contributors
+
+```{r}
+#Obtaining polyphenol intake for the whole cohort
+overall_food_contributors = PP_Raw %>%
+  left_join(totalkcal) %>%
+  group_by(UserName, RecallNo, food_id) %>%
+  mutate(food_ppintake = sum(pp_consumed, na.rm = TRUE)) %>%
+  select(c(UserName, RecallNo, food_id, food_name, food_ppintake, avg_total_kcal)) %>%
+  ungroup() %>%
+  
+  #Averages across recalls for each food
+  group_by(UserName, food_id) %>% 
+  mutate(Avg_food_ppintake = mean(food_ppintake/(avg_total_kcal/1000), na.rm = TRUE)) %>%
+  distinct(UserName, food_id, .keep_all = TRUE) %>%
+  ungroup() %>%
+  
+  #get overall food average
+  group_by(food_id) %>% 
+  add_count(food_id) %>% #get food frequency
+  mutate(overall_avg_food_ppintake = mean(Avg_food_ppintake, na.rm = TRUE)) %>%
+  select(c(food_id, food_name, overall_avg_food_ppintake, n)) %>%
+  distinct(food_id, .keep_all = TRUE) %>%
+  rename('food_freq' = 'n') %>%
+  ungroup()
+
+write.csv(overall_food_contributors, 'output/Ingredient_Intake_Frequency.csv', row.names = FALSE)
+```
+
+
+Obtaining the Average Ingredient Intake
+```{r}
+overall_ingredient_intake = PP_Raw %>%
+  
+  #Get all of the Ingredient sources (remove redundant information from polyphenol data)
+  #Important to include Food_Description
+  distinct(UserName, RecallNo, Food_Description, Ingredient_code, .keep_all = TRUE) %>%
+
+  #Sum the amount of ingredient consumed per each particpant's recall
+  # Here we pivot to the FooDB food id level instead of FNDDS codes
+  group_by(UserName, RecallNo, food_id) %>%
+  mutate(Ingredient_recalltotal = sum(Ingredient_consumed_g, na.rm = TRUE)) %>%
+  select(c(UserName, RecallNo, food_id, food_name, Ingredient_consumed_g,
+           Ingredient_recalltotal)) %>%
+  ungroup() %>%
+  
+  #Average ingredient consumed across recalls for each participant
+  group_by(UserName, food_id) %>% 
+  mutate(Ingredient_UserAvgTotal = mean(Ingredient_recalltotal, na.rm = TRUE)) %>%
+  distinct(UserName, food_id, .keep_all = TRUE) %>%
+  ungroup() %>%
+  
+  #get overall food average ACROSS USERS  
+  group_by(food_id) %>% 
+  mutate(Ingredient_OverallAvgTotal = mean(Ingredient_UserAvgTotal, na.rm = TRUE)) %>%
+  select(c(food_id, food_name, Ingredient_OverallAvgTotal)) %>%
+  distinct(food_id, .keep_all = TRUE) %>%
+  ungroup()
+```
+
+
+Begin filtering based off quartile designations to understand the top contributors.
+```{r}
+top_contributors = overall_food_contributors %>%
+  left_join(overall_ingredient_intake) %>%
+  mutate(freq_quartile = as.numeric(cut2(food_freq, g = 4)),
+         intake_quartile = as.numeric(cut2(overall_avg_food_ppintake, g = 4))) %>%
+  filter(freq_quartile == 4 & intake_quartile == 4) %>%
+  arrange(desc(overall_avg_food_ppintake)) %>%
+  slice_head(n = 10) %>%
+  mutate(rank = ifelse(overall_avg_food_ppintake == max(overall_avg_food_ppintake), 1, rank(-overall_avg_food_ppintake)),
+         grouping = ifelse(rank <=5, '1 - 5', '6 - 10'))
+```
+
+
+Table 1
+```{r}
+top_contributors_table_format = top_contributors %>%
+  select(c(rank, food_name, food_freq, overall_avg_food_ppintake,
+           Ingredient_OverallAvgTotal)) %>%
+  mutate(overall_avg_food_ppintake = signif(overall_avg_food_ppintake, digits = 3),
+         Ingredient_OverallAvgTotal = signif(Ingredient_OverallAvgTotal, digits = 3)) %>%
+  rename('Rank' = 1,
+         'Food' = 2,
+         'User Frequency' = 3,
+         'Polyphenol Intake (mg)' = 4,
+         'Food Amount Consumed (g)' = 5)
+
+write.csv(top_contributors_table_format, 'output/top_foodcontributors_table.csv', row.names = FALSE)
+
+gt_tbl = gt(top_contributors_table_format)
+gt_tbl
+```
+
+
+### 3) CLASS SUMMARY
+```{r message = FALSE}
+class_analysis = PP_Raw %>%
+  left_join(tax) %>%
+  left_join(totalkcal) %>%
+  group_by(UserName, RecallNo, klass) %>%
+  mutate(klass_ppintake = sum(pp_consumed, na.rm = TRUE)) %>%
+  select(c(UserName, RecallNo, klass, klass_ppintake, avg_total_kcal)) %>%
+  ungroup() %>%
+  group_by(UserName, klass) %>% #Averages across recalls for each food
+  mutate(Avg_klass_ppintake = mean(klass_ppintake/(avg_total_kcal/1000), na.rm = TRUE)) %>%
+  distinct(UserName, klass, .keep_all = TRUE) %>%
+  select(-c(RecallNo, klass_ppintake)) %>%
+  group_by(klass) %>%
+  add_count(klass) %>% #how many users per class
+  mutate(overall_avg_klass_ppintake = mean(Avg_klass_ppintake, na.rm = TRUE)) %>%
+  ungroup()
+```
+
+```{r}
+#how many classes did participants eat?
+participantclass = class_analysis %>%
+  group_by(UserName) %>%
+  add_count(UserName, name = 'classes_consumed') %>%
+  select(UserName, classes_consumed) %>%
+  distinct(UserName, .keep_all = TRUE)
+
+message("Mean Number of classes consumed: ", 
+        round(mean(participantclass$classes_consumed), digits =0),
+        "\nSD of classes consumed:", 
+        round(sd(participantclass$classes_consumed), digits =0))
+```
+
+What are the top class contributors that have non-zero content in FooDB?
+```{r}
+summarizedclass = class_analysis %>%
+  select(c(klass, overall_avg_klass_ppintake, n)) %>%
+  distinct(klass, .keep_all = TRUE) %>%
+  rename('klass_freq' = 'n') %>%
+  filter(!overall_avg_klass_ppintake == 0) %>%
+  arrange(desc(overall_avg_klass_ppintake))
+
+head(summarizedclass$klass, 10)
+```
+
+
+

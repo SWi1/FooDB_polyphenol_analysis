@@ -1,0 +1,142 @@
+---
+title: "Random Forest Regression Plots"
+author: "Stephanie Wilson"
+date: "November 2023"
+output: html_document
+---
+
+# Create regression plots for the top 5 random forest model features. 
+Resulting plots are included as supplementary manuscript material. These are in addition to model beeswarm plots.
+
+__Inputs__. 
+  - *RDS files* from dietML runs
+  - *rds_path_subclinical_names.csv*, from ML3B_dietML_RDSpaths_Performance.Rmd
+  - *dietML_top_features.csv*, from ML3A_dietML_Feature_Formatting.Rmd
+  
+__Outputs__. 
+  - Regression Plots images
+
+```{r warning = FALSE, message = FALSE}
+library(tidyverse); library(ggpubr)
+```
+
+Load Top 5 dietML features and their original rds files
+```{r}
+features = read.csv('output/dietML_top_features.csv') %>%
+  select(c(feature, feature_publish, marker))
+
+rows_to_rename = c(3, 11, 14, 15, 18)
+# New names for the specified rows
+new_names = c("Avg Total Protein (g)", "ASA24 HEI Total Score", 
+              "Avg Total Fiber (g)", "BMI (kg/m^2)", "Age (years)")
+
+features_unique = features %>%
+  select(-marker) %>%
+  distinct(feature, .keep_all = TRUE) %>%
+  mutate(feature_publish = case_when(
+    row_number() %in% rows_to_rename ~ new_names[match(row_number(), rows_to_rename)],
+    TRUE ~ feature_publish),
+    feature_publish = ifelse(feature_publish %in% new_names, feature_publish, paste(feature_publish, "(mg)")))
+
+rds = read.csv('output/rds_path_subclinical_names.csv') %>%
+  mutate(marker = substr(response_type, 1, 3),
+         label = paste0('Subclinical ', marker))
+```
+`
+
+
+### 1) Extract RDS Input data
+
+Create a function to extract only the input data
+```{r warning = FALSE}
+extract_input_from_rds = function(path) {
+
+  load(path) # Load the RDS file
+  input = input # Extract the required dataframes
+  
+  return(data.frame(input))
+}
+```
+
+### 2) Pull and format the data for each marker
+```{r warning = FALSE}
+CRP = extract_input_from_rds(rds$path[2]) %>% 
+  select(c(subject_id, label, 
+           one_of(features %>% filter(marker=='CRP') %>% select(feature) %>% pull()))) %>% 
+  rename('CRP_boxcox' = 'label') %>%
+  pivot_longer(cols =3:7, names_to = 'feature', values_to = 'value') %>%
+  left_join(features_unique, by = 'feature')
+
+CAL = extract_input_from_rds(rds$path[1]) %>% 
+  select(c(subject_id, label, 
+           one_of(features %>% filter(marker=='CAL') %>% select(feature) %>% pull()))) %>% 
+  rename('Calprotectin' = 'label') %>%
+  pivot_longer(cols =3:7, names_to = 'feature', values_to = 'value') %>%
+  left_join(features_unique, by = 'feature')
+
+MPO = extract_input_from_rds(rds$path[3]) %>% 
+  select(c(subject_id, label, 
+           one_of(features %>% filter(marker=='MPO') %>% select(feature) %>% pull()))) %>% 
+  rename('Myeloperoxidase' = 'label') %>%
+  pivot_longer(cols =3:7, names_to = 'feature', values_to = 'value') %>%
+  left_join(features_unique, by = 'feature')
+
+NEO = extract_input_from_rds(rds$path[4]) %>% 
+  select(c(subject_id, label, 
+           one_of(features %>% filter(marker=='NEO') %>% select(feature) %>% pull()))) %>% 
+  rename('Neopterin' = 'label') %>%
+  pivot_longer(cols =3:7, names_to = 'feature', values_to = 'value') %>%
+  left_join(features_unique, by = 'feature')
+```
+
+### 3) Create regression plots
+
+```{r}
+CRP_plot = ggscatter(CRP, x = "value", y = "CRP_boxcox", add = "reg.line") +
+  facet_wrap(~str_wrap(feature_publish, width =25), scales = 'free_x', ncol=5) +
+  coord_cartesian(ylim = c(min(CRP$CRP_boxcox), max(CRP$CRP_boxcox)*1.6))+
+  stat_cor(method = 'spearman', p.accuracy = 0.001,
+           label.x.npc = 'left', label.y = max(CRP$CRP_boxcox)*1.4, size =3) + 
+  labs(y = 'CRP (Box-Cox)', x = '')+ 
+    theme(plot.margin = unit(c(0,0,0,0.5), "cm")) 
+
+CAL_plot = ggscatter(CAL, x = "value", y = "Calprotectin", add = "reg.line") +
+  facet_wrap(~str_wrap(feature_publish, width =23), scales = 'free_x', ncol=5) +
+  coord_cartesian(ylim = c(min(CAL$Calprotectin), max(CAL$Calprotectin)*1.3))+
+  stat_cor(method = 'spearman', p.accuracy = 0.001,
+           label.x.npc = 'left', label.y = max(CAL$Calprotectin)*1.2, size =3) + 
+  labs(y = 'CAL (ng/mL)', x = '')+ 
+    theme(plot.margin = unit(c(0,0,0,0.5), "cm"))
+
+MPO_plot = ggscatter(MPO, x = "value", y = "Myeloperoxidase", add = "reg.line") +
+  facet_wrap(~feature_publish, scales = 'free_x', ncol=5) +
+   coord_cartesian(ylim = c(min(MPO$Myeloperoxidase), max(MPO$Myeloperoxidase)*1.3))+
+  stat_cor(method = 'spearman', p.accuracy = 0.001,
+           label.x.npc = 'left', label.y = max(MPO$Myeloperoxidase)*1.2, size =3) +
+  labs(y = 'MPO (ng/mL)', x = '')+ 
+    theme(plot.margin = unit(c(0,0,0,0.5), "cm"))
+
+NEO_plot = ggscatter(NEO, x = "value", y = "Neopterin", add = "reg.line") +
+  facet_wrap(~str_wrap(feature_publish, width = 25), scales = 'free_x', ncol=5) +
+ coord_cartesian(ylim = c(min(NEO$Neopterin), max(NEO$Neopterin)*1.3))+
+  stat_cor(method = 'spearman', p.accuracy = 0.001,
+           label.x.npc = 'left', label.y = max(NEO$Neopterin)*1.2, size =3) +
+  labs(y = 'NEO (ng/g)', x = '') + 
+    theme(plot.margin = unit(c(0,0,0,0.5), "cm"))
+
+combined_CRP_CAL = ggarrange(CRP_plot, CAL_plot, nrow = 2, labels = c("A)", "B)"))
+combined_MPO_NEO = ggarrange(MPO_plot, NEO_plot, nrow = 2, labels = c("A)", "B)"))
+```
+
+
+```{r}
+#Main Text
+ggsave(plot = combined_CRP_CAL, filename = 'images/dietML_CRP_CAL_correlations.png', width = 9, height = 4, dpi = 300)
+ggsave(plot = combined_CRP_CAL, filename = 'images/dietML_CRP_CAL_correlations.pdf', width = 9, height = 4)
+
+# Supplemental
+ggsave(plot = combined_MPO_NEO, filename = 'images/dietML_MPO_NEO_correlations.png', width = 9, height = 4, dpi = 300)
+ggsave(plot = combined_MPO_NEO, filename = 'images/dietML_MPO_NEO_correlations.pdf', width = 9, height = 4)
+```
+
+
