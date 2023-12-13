@@ -1,0 +1,138 @@
+---
+title: "Prep File: Compound Taxonomy Scraping"
+author: "Stephanie Wilson"
+date: "August 2023"
+output: html_document
+---
+
+# Complete Taxonomy for Polyphenol Compounds
+
+__Required Input Files__  
+  - *FooDB_polyphenols_V2.csv* - output from Q2_Polyphenol_Quantification_Content.Rmd
+
+__Information__  
+This script scrapes the FooDB website to pull chemical compound classification data for polyphenols in the original data set that have missing taxonomy data. Specifically, this script:
+
+  1) Extracts X-paths for Compound Classifications for each Uncategorized Polyphenol
+  2) Run function on all uncategorized polyphenols and format output
+  3) Update the original File
+
+__Outputs__  
+  - *FooDB_phenols_taxonomy.csv* - Our 3063 polyphenols with improved chemical compound classification data.
+
+```{r LOAD PACKAGES, messages = FALSE}
+library(dplyr); library(tidyr); library(purrr)
+library(rvest); library(xml2); library(stringr)
+source('Functions/get_taxonomy.R')
+```
+
+```{r LOAD DATA}
+#Create urls
+FooDB_phenols = read.csv('FooDB/FooDB_polyphenols_V2.csv') %>%
+  mutate(compound_urls = paste0("https://foodb.ca/compounds/", public_id))
+
+#Subset those that are unclassified
+unclassified_compound_urls = FooDB_phenols %>%
+  filter(kingdom == '') %>%
+  select(public_id, compound_urls) 
+```
+
+
+### 1) Extract X-paths for Compound Classifications for each Uncategorized Polyphenol
+
+Use an example compound to discover path. Message output is long.
+```{r}
+testurl = paste0("https://foodb.ca/compounds/FDB021899") #unclassified_compound_urls[150, 2]
+doc = read_xml(testurl)
+message(as.character(doc))
+```
+
+Test Xpaths
+  - Return the character vector from an HTML element using XPath expression
+```{r}
+# Taxonomic Information
+kingdom = xml_text(html_elements(doc, xpath = '//kingdom'))
+superklass = xml_text(html_elements(doc, xpath = '//super_class'))
+klass = xml_text(html_elements(doc, xpath = '//class'))
+subklass = xml_text(html_elements(doc, xpath = '//sub_class'))
+directparent =xml_text(html_elements(doc, xpath = '//direct_parent'))
+
+# Create Dataframe
+data = data.frame(kingdom, superklass, klass, subklass, directparent)
+```
+
+### 2) Run get_taxonomy to obtain classification on FooDB compounds
+
+Test the function with a few compounds
+```{r}
+testurls = unclassified_compound_urls[1:2, 2]
+output = sapply(testurls, get_taxonomy)
+```
+
+
+Run function on all uncategorized polyphenols
+```{r}
+output = sapply(unclassified_compound_urls$url_search, get_taxonomy)
+```
+
+Format Output
+```{r}
+#Transpose matrix and convert into dataframe
+output.df = as.data.frame(t(output))
+
+#Remove url base to leave just the compound id
+rownames(output.df) = str_remove(rownames(output.df), "https://foodb.ca/compounds/") 
+
+# Move row names to a column
+output.df = tibble::rownames_to_column(output.df, 'compound_public_id')
+```
+
+
+Combine classification data
+```{r}
+#Simply and polish compound identifying information
+names = FooDB_phenols %>%
+  select(public_id, name) %>%
+  rename('compound_public_id' = 'public_id',
+         'compound_name' = 'name')
+
+output.df.names = output.df %>%
+  left_join(names, by = 'compound_public_id') %>%
+  relocate(compound_name, .after = 'compound_public_id')
+```
+
+
+Adjust column structures for merger
+```{r}
+output.df.names = as.data.frame(apply(output.df.names, 2, as.character)) %>%
+  mutate(kingdom = as.character(kingdom))
+```
+
+
+### 3) Update the original file
+
+Remove rows that we searched for, and replace with updated data.
+```{r}
+FooDB_phenols_updated = FooDB_phenols %>%
+  filter(kingdom == 'Organic compounds') %>%
+  select(c('public_id', 'name', 'kingdom', 'superklass', 
+           'klass', 'subklass')) %>%
+  rename('compound_public_id' = 'public_id', 
+         'compound_name' = 'name') %>%
+  full_join(output.df.names) %>%
+  mutate(kingdom = ifelse(kingdom == 'character(0)', 
+                          'Unclassified', kingdom)) %>%
+  mutate(superklass = ifelse(superklass == 'character(0)', 
+                             'Unclassified', superklass)) %>%
+  mutate(klass = ifelse(klass == 'character(0)', 
+                        'Unclassified', klass)) %>%
+  mutate(subklass = ifelse(subklass == 'character(0)', 
+                           'Unclassified', subklass)) %>%
+  mutate(directparent = ifelse(directparent == 'character(0)', 
+                               'Unclassified', directparent))
+```
+
+
+```{r}
+write.csv(FooDB_phenols_updated, 'FooDB/FooDB_phenols_taxonomy.csv', row.names = FALSE)
+```

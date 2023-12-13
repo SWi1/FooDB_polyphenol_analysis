@@ -1,0 +1,239 @@
+---
+title: "Prep File: Merge Study Variables"
+author: "Stephanie Wilson"
+date: "April 2023"
+output: html_document
+---
+
+# Merge FL100 files
+
+## Information
+This script pools multiple FL100 files into one joint file. Files include data on demographics, SES, fecal markers, systemic markers, ASA24 HEI scores. Files also include summaries of total kcal
+
+## Inputs. 
+  - Binning Data
+  - ASA24 Data
+  - HEI
+  - ASA24 Seasons
+  - Stool 
+  - SES
+  - CRP 
+  
+## Outputs
+- **FL100_merged_variables.csv**
+- **FL100_merged_variables_FECAL.csv** - Individuals with stool samples over 24hr old and individuals without complete GI data have been removed
+- **FL100_merged_variables_BLOOD.csv** - Individuals without complete blood parameters have been removed. 
+
+```{r}
+library(tidyverse); library(Hmisc) #for cut2
+```
+
+### Binning Data
+```{r}
+bindata = read.csv('data/FL100_Binning_Data.csv') %>%
+  rename('UserName' = 'Participant.ID',
+         'Bin' = 'Sampling.Bin.Number.',
+         'BMI' = 'Final.BMI') %>%
+  mutate(Sex = factor(Sex)) %>%
+  select(c(UserName, Age, Sex, BMI, Age.Category, BMI.Category))
+```
+
+### Dietary Data
+
+```{r}
+#ASA data
+asa = read.csv('data/fl100_recalls_qcd.csv')
+
+# ASA Component and Total HEI Scores
+hei = read.csv('data/CTSC24532USDAWHNRCNu-HEIscoreWithEthnicit_DATA_2023-05-31_1343.csv') %>%
+  select(c(subject_id:hei_asa24_totalscore)) %>% 
+  rename('UserName' = 'subject_id')
+```
+
+
+Additional calculation of total kcal and total fiber from ASA24 data.
+```{r}
+asa_averages = asa %>%
+  group_by(UserName, RecallNo) %>%
+  select(c(UserName, RecallNo, KCAL, FIBE, PROT)) %>%
+  mutate(total_kcal = sum(KCAL, na.rm =TRUE),
+         total_fiber = sum(FIBE, na.rm =TRUE),
+         total_PRO = sum(PROT, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(UserName) %>%
+  mutate(avg_total_kcal = mean(total_kcal, na.rm = TRUE),
+         avg_total_fiber = mean(total_fiber, na.rm = TRUE),
+         avg_total_PRO = mean(total_PRO, na.rm = TRUE)) %>%
+  distinct(UserName, .keep_all = TRUE) %>%
+  select(c(UserName, avg_total_kcal, avg_total_fiber, avg_total_PRO)) 
+```
+
+
+#### Stool
+```{r}
+stool = read.delim('data/FL100_stool_variables.txt', header = TRUE, sep = "\t", dec = ".") %>%
+  rename('UserName' = 'subject_id')
+```
+
+#### CRP Data
+```{r}
+CRP = read.csv('data/CTSC24532USDAWHNRCNu-CRPData_DATA_LABELS_2023-05-30_1348.csv')%>%
+  rename('UserName' = 1,
+         'CRP_BD1' = 2,
+         'CRP_BD3' = 3,
+         'CRP_BD4' = 4)
+```
+        
+### SES data
+```{r}
+ses = read.csv('data/FL100_SES.csv') %>%
+  rename('UserName' = 'subject_id',
+    'White' = 'race_ethnicity___1',
+    'Hispanic_Latinx' = 'race_ethnicity___2',
+    'Black' = 'race_ethnicity___3',
+    'Asian' = 'race_ethnicity___4',
+    'East_Asian' = 'race_ethnicity___5',
+    'South_Asian' = 'race_ethnicity___6',
+    'Southeast_Asian' = 'race_ethnicity___7',
+    'Middle_Eastern' = 'race_ethnicity___8',
+    'American_Indian_Alaska_Native' = 'race_ethnicity___9',
+    'Native_Hawaiian_Pacific_Islander' = 'race_ethnicity___10',
+    'Race_Declined' = 'race_ethnicity___11',
+    'Race_Other' = 'race_ethnicity___12') %>%
+  rowwise()%>%
+  mutate(sum = sum(across(White:Native_Hawaiian_Pacific_Islander))) %>%
+  select(c(UserName:other_ethnicity, edu_level, hhincome, sum)) 
+```
+
+
+```{r}
+#Let us convert the binary data to more meaningful text descriptions
+race_step1 = ses %>%
+  mutate(
+    White = ifelse(White == 1, 'White', ''),
+    Hispanic_Latinx = ifelse(Hispanic_Latinx == 1, 'Hispanic or Latinx', ''),
+    Black = ifelse(Black == 1, 'Black', ''),
+    Asian = ifelse(Asian == 1, 'Asian', ''),
+    East_Asian = ifelse(East_Asian == 1, 'East Asian', ''),
+    South_Asian = ifelse(South_Asian == 1, 'South Asian', ''),
+    Southeast_Asian  = ifelse(Southeast_Asian == 1, 'Southeast Asian', ''),
+    Middle_Eastern = ifelse(Middle_Eastern == 1, 'Middle Eastern', ''),
+    American_Indian_Alaska_Native = ifelse(
+      American_Indian_Alaska_Native == 1, 'American Indian or Alaska Native', ''),
+    Native_Hawaiian_Pacific_Islander = ifelse(
+      Native_Hawaiian_Pacific_Islander == 1, 'Native Hawaiian or Pacific Islander', ''),
+    Race_Declined = ifelse(Race_Declined == 1, 'Race Declined', '')) %>%
+  select(c(UserName, White:other_ethnicity, sum))
+```
+
+Cleaning and Merging Racial Categories
+```{r}
+declined = race_step1 %>%
+  filter(Race_Declined == 'Race Declined') %>%
+  mutate(Race = Race_Declined) %>%
+  select(c(UserName, Race))
+
+multiracial = race_step1 %>%
+  filter(sum > 1) %>%
+  mutate(Race_description = paste(White, Hispanic_Latinx, Black, Asian, East_Asian,
+                      South_Asian, Southeast_Asian, Middle_Eastern,
+                      American_Indian_Alaska_Native,
+                      Native_Hawaiian_Pacific_Islander, sep = ',  ')) %>%
+  mutate(Race_description = gsub(x = Race_description, 
+                                 replacement = ' ', pattern = ', {2,4}'),
+         Race_description = gsub(x = Race_description, pattern = ", $", 
+                                 replacement = ''), 
+         Race_description = gsub(x = Race_description, pattern = "^, ", 
+                                 replacement = ''),
+         Race_description =gsub(x = Race_description, pattern = "\\s{1,6}",
+                                replacement = ' ')) %>%
+  mutate(Race = 'Two or More Races') %>%
+  select(c(UserName, Race, Race_description))
+
+other = race_step1 %>%
+  filter(sum == 0) %>%
+  filter(!UserName %in% declined$UserName) %>% #manual review, self-reported as multiracial
+  mutate(Race = 'Two or More Races',
+         Race_description = other_ethnicity) %>%
+  select(c(UserName, Race, Race_description))
+
+single = race_step1 %>%
+  filter(!UserName %in% c(declined$UserName, multiracial$UserName, other$UserName)) %>%
+  mutate(Race = paste(White, Hispanic_Latinx, Black, Asian, East_Asian, South_Asian,
+                      Southeast_Asian, Middle_Eastern, American_Indian_Alaska_Native,
+                      Native_Hawaiian_Pacific_Islander, sep = ', ')) %>%
+  mutate(Race = gsub(x = Race, replacement = '', pattern = ', ')) %>%
+  select(c(UserName, Race))
+
+race = single %>%
+  full_join(declined) %>%
+  full_join(multiracial) %>%
+  full_join(other) %>%
+  arrange(UserName)
+```
+
+Update SES file
+```{r}
+ses_update = ses %>%
+  select(-c(White:other_ethnicity, dov1, residence_city:birth_city, sum, age, sex, bmi)) %>%
+  left_join(race, by = 'UserName')
+```
+
+### MERGE VARIABLES
+```{r}
+merged = bindata %>%
+  left_join(ses_update, by = "UserName") %>%
+  left_join(asa_averages, by = "UserName") %>%
+  left_join(hei, by = 'UserName') %>%
+  left_join(stool, by = "UserName") %>%
+  left_join(CRP, by = 'UserName')
+
+write.csv(merged, 'data/FL100_merged_variables.csv', row.names = FALSE)
+```
+
+
+Let us narrow this down further
+```{r}
+merged_succinct = merged %>%
+  select(c(UserName,
+           Age, Sex, BMI, #Main covariates + Sampling Scheme
+           CRP_BD1, plasma_lbp_bd1, #Blood outcomes
+           fecal_calprotectin, fecal_mpo, fecal_neopterin, #stool outcomes
+           avg_total_fiber, hei_asa24_totalscore, #dietary predictors
+           hei_asa24_totalveg:hei_asa24_addsug, #hei component scores
+           bristol_num, fecal_ph, hhincome, edu_level, #additional predictors
+           avg_total_kcal, After24h)) #for filtering steps, remove after filtering
+```
+
+
+```{r message = FALSE}
+fecal = merged_succinct %>%
+  filter(!is.na(avg_total_kcal)) %>% #removes 43 from incomplete ASA24
+  filter(!After24h == 1) %>% #removes 30 individuals 
+  filter(!is.na(fecal_neopterin)) %>% #removes 13
+  select(-c(avg_total_kcal, After24h))
+
+#Establish quartiles for each outcome
+fecal$neo_quartile = as.numeric(cut2(fecal$fecal_neopterin, g = 4))
+fecal$mpo_quartile = as.numeric(cut2(fecal$fecal_mpo, g = 4))
+fecal$cal_quartile = as.numeric(cut2(fecal$fecal_calprotectin, g = 4))
+
+write.csv(fecal, 'data/FL100_merged_variables_FECAL.csv', row.names = FALSE)
+```
+
+
+```{r}
+blood = merged_succinct %>%
+  filter(!is.na(avg_total_kcal)) %>% #removes 43 from incomplete ASA24
+  filter(!is.na(CRP_BD1)) %>% # removes 2
+  select(-c(avg_total_kcal, After24h))
+
+#Establish quartiles
+blood$CRP_quartile = as.numeric(cut2(blood$CRP_BD1, g = 4))
+blood$LBP_quartile = as.numeric(cut2(blood$plasma_lbp_bd1, g = 4))
+
+write.csv(blood, 'data/FL100_merged_variables_BLOOD.csv', row.names = FALSE)
+```
+
+
+

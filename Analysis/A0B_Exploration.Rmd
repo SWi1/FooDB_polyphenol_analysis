@@ -1,0 +1,133 @@
+---
+title: "Prep File: Polyphenol Exploratory"
+author: "Stephanie Wilson"
+date: "March 2023"
+output: html_document
+---
+
+#  Initial Exploration of polyphenol intakes.
+
+__Required Input Files__.                          
+  - *FooDB_phenol_content_ASAmerged.csv.bz2* - Output from Q5_Polyphenol_Estimation_ASAMerge. File still has compound level data.
+  - *FooDB_phenols_taxonomy.csv* - Output from A0A_Scrape_Taxonomy.Rmd
+  
+__Information__. 
+This script begins to explore polyphenol intakes in the FL100 study.
+
+__Output__. 
+  - *FL100_PP_Raw.csv* - Polyphenol content for each compound in foods listed in each recall test for each participant.
+  - *FL100_PP_DailyAveraged.csv* - Polyphenol content for each compound in foods, averaged across each participant's recalls.
+  - *FL100_Ingredient_Level_PP_Averages.csv* - Average polyphenol content for each ingredient.
+
+```{r Load packages, message=FALSE}
+library(tidyverse); library(hrbrthemes); library(ggrepel); library(wesanderson); library(readxl)
+```
+
+```{r Load Data}
+ASA_FooDB = read.csv('FooDB/FooDB_phenol_content_ASAmerged.csv.bz2') %>%
+  filter(!Ingredient_code == '999328') # Remove Vitamin D
+PP_taxonomy = read.csv('FooDB/FooDB_phenols_taxonomy.csv') 
+```
+
+
+### 1) Exploratory DFs Creation
+
+Create a simplified data frame showing the amount of each polyphenol consumed per food and individual. 
+  - distinct() removes compound duplicates since we're using averages (what FooDB.ca uses)
+  
+```{r}
+test = ASA_FooDB %>%
+  filter(UserName == '8019') %>%
+  distinct(RecallNo, food_id, compound_public_id, .keep_all = TRUE)
+
+#total_daily_intake = total daily intake (mg) for each participant's recall
+test_intake = test %>%
+  group_by(RecallNo) %>%
+  mutate(total_daily_intake_mg = sum(pp_consumed, na.rm = TRUE)) %>%
+  select(c(UserName, RecallNo, total_daily_intake_mg)) %>%
+  distinct(UserName, RecallNo, .keep_all = TRUE)
+
+# Average for UserName 8019
+mean(test_intake$total_daily_intake_mg) 
+```
+  
+```{r}
+exploratory = ASA_FooDB %>%
+  distinct(UserName, RecallNo, food_id, compound_public_id, .keep_all = TRUE) %>%
+  select(UserName, RecallNo, Food_Description, Ingredient_code, 
+         Ingredient_description, food_id, food_name, compound_id, 
+         compound_public_id, compound_name, Ingredient_consumed_g, 
+         orig_content_avg_RFadj, pp_consumed, citation, Status_adj) %>%
+  arrange(desc(pp_consumed))
+
+write.csv(exploratory, 'data/FL100_PP_Raw.csv', row.names = FALSE)
+```
+
+
+But first, how many compounds are quantified and from how many foods? 
+```{r}
+quantified = exploratory %>% 
+  filter(!orig_content_avg_RFadj == 'NA') 
+
+# Summaries
+message('Number of quantified distinct foods: ', 
+        length(unique(quantified$food_id)))
+message('Number of quantified distinct compounds: ', 
+        length(unique(quantified$compound_id)))
+message('Number of quantified & unquantified distinct foods: ', 
+         length(unique(exploratory$food_id)))
+message('Number of quantified & unquantified distinct compounds: ', 
+         length(unique(exploratory$compound_id)))
+```
+
+
+Average across recalls for each compound in each reported food.
+```{r}
+exploratory_daily_average = exploratory %>%
+  group_by(UserName, food_id, compound_id) %>%
+  mutate(mean_daily_intake_mg = mean(pp_consumed, na.rm = TRUE)) %>%
+  add_count(food_id, name = 'food_freq') %>%
+  distinct(UserName, food_id, food_id, compound_id, .keep_all = TRUE)
+
+write.csv(exploratory_daily_average, 'data/FL100_PP_DailyAveraged.csv',
+          row.names = FALSE)
+```
+
+### 2) Exploratory Basics
+```{r message = FALSE}
+#Mean intake by polyphenol
+mean_pp = exploratory %>%
+  group_by(compound_id) %>%
+  mutate(mean_intake_mg = mean(pp_consumed, na.rm = TRUE)) %>%
+  select(c(compound_id, compound_name, mean_intake_mg)) %>%
+  distinct(compound_id, compound_name, .keep_all = TRUE) 
+
+#Number of unique food sources per polyphenol in FL100 cohort
+unique_food_sources = exploratory %>%
+  group_by(compound_name, compound_id) %>%
+  distinct(food_name, .keep_all = TRUE) %>%
+  count(sort = TRUE, name = 'num_uniq_foods') 
+
+top_pp = left_join(mean_pp, unique_food_sources) %>%
+  arrange(desc(mean_intake_mg), sort = TRUE)
+```
+
+
+```{r warning = FALSE}
+uniquesourcesplot = ggplot(top_pp, aes(x = num_uniq_foods, y = mean_intake_mg,
+                                    label = compound_name)) + 
+  geom_point() +   
+  theme_ipsum() + 
+  labs(subtitle = 'Average Intake and Unique Food Sources for FoodB polyphenols',
+       y='Mean Intake (mg)', 
+       x='No. of Unique Food Sources') +
+  geom_text_repel(data = subset(top_pp, mean_intake_mg > 350),
+                  aes(label = compound_name), direction = 'x') +
+  geom_text_repel(data = subset(top_pp, num_uniq_foods > 125),
+                  aes(label = compound_name), direction = 'both', 
+                  box.padding = unit(1.2, "lines"))
+uniquesourcesplot
+ggsave(plot = uniquesourcesplot, filename = 'images/unique_sources_compounds.png', width = 5, height = 4, units = "in", dpi = 300)
+```
+
+
