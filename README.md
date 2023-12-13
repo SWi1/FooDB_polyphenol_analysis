@@ -76,7 +76,7 @@ Scripts in each set are intended to be run sequentially.
     -   E4_Polyphenol_Estimation_Content_Aggregate.Rmd
     -   E5_Polyphenol_Estimation_ASAmerge.Rmd
     
-4) Analyses. Information provided in README.md within Analyses directory.    
+4) Analyses. This directory includes scripts for the analysis of polyphenol intake and inflammation outcomes in healthy adults. Script list and additional information provided in README.md within Analysis directory.    
 
 ## Outputs
 
