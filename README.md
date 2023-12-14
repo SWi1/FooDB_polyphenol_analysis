@@ -16,7 +16,7 @@ This repository contains scripts for dietary polyphenol estimation and inflammat
 
 ## Required Files
 
-Data that is publicly available is available on this GitHub repository.
+Data Availablity: Food composition database data that is already publicly available is provided on this GitHub repository. Requests for non-metagenomic data from the USDA ARS WHNRC Nutritional Phenotyping Study used in this analysis should be made via an email to the senior WHNRC author on the publication of interest. Requests will be reviewed quarterly by a committee consisting of the study investigators. 
 
 -   **FNDDS 2017-2018 Data**, Downloadable as xlsx files fom the [USDA ARS Beltsville Food Surveys Research Group](https://www.ars.usda.gov/northeast-area/beltsville-md-bhnrc/beltsville-human-nutrition-research-center/food-surveys-research-group/docs/fndds-download-databases/). What We Eat in America (WWEIA) category code file was manually adjusted for food matrices on top of data derived from [here](https://www.ars.usda.gov/ARSUserFiles/80400530/pdf/1718/Food_categories_2017-2018.pdf).
 
@@ -36,14 +36,14 @@ Data that is publicly available is available on this GitHub repository.
     2) Milk (Poly)phenolic Scrape from FooDB.ca SDF [page](https://github.com/SWi1/FooDB_polyphenol_analysis/blob/Version2/FooDB/milk.sdf)
   
     
--   **Dietary Recall Data**, Downloadable as Items Analysis File from ASA24 Researcher Site. The dietary data utilized in the USDA Phenotyping Study underwent quality control. Methods are outlined in the paper: [*'Effect of Manual Data Cleaning on Nutrient Intakes Using the Automated Self-Administered 24-Hour Dietary Assessment Tool (ASA24)'*](https://doi.org/10.1093/cdn/nzab005)
+-   **Dietary Recall Data**, Downloadable as Items Analysis File from ASA24 Researcher Site. The dietary data utilized in the USDA Phenotyping Study underwent quality control. Methods are outlined in the paper: [*'Effect of Manual Data Cleaning on Nutrient Intakes Using the Automated Self-Administered 24-Hour Dietary Assessment Tool (ASA24)'*](https://doi.org/10.1093/cdn/nzab005).
 
 -   **Phenol Explorer Data**, From Phenol Explorer online, Version 3.6
     
     1)  PhenolExplorer-RFTable_20190204.xlsx
     2)  compounds-classification_20230504.csv
     3)  foods-classification.csv
-
+ 
 ## Suggested Order of Scripts
 
 Scripts in each set are intended to be run sequentially.
