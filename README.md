@@ -33,7 +33,7 @@ This repository contains scripts for dietary polyphenol estimation and inflammat
 -   **SDF**, SDF, or structure-data format, files contain atom and bond information to visualize compounds. Chemical visualization software (Ex. MarvinView) can read SDF files to view structures.
 
     1) FooDB SDF downloadable from GitHub [page](https://github.com/SWi1/Polyphenol_Quantification_FooDB/blob/main/FooDB/FooDB2_polyphenols_ID.sdf)
-    2) Milk (Poly)phenolic Scrape from FooDB.ca SDF [page](https://github.com/SWi1/FooDB_polyphenol_analysis/blob/Version2/FooDB/milk.sdf)
+    2) Milk (Poly)phenolic Scrape from FooDB.ca SDF [page](https://github.com/SWi1/FooDB_polyphenol_analysis/blob/main/FooDB/milk.sdf)
   
     
 -   **Dietary Recall Data**, Downloadable as Items Analysis File from ASA24 Researcher Site. The dietary data utilized in the USDA Phenotyping Study underwent quality control. Methods are outlined in the paper: [*'Effect of Manual Data Cleaning on Nutrient Intakes Using the Automated Self-Administered 24-Hour Dietary Assessment Tool (ASA24)'*](https://doi.org/10.1093/cdn/nzab005).
