@@ -16,14 +16,14 @@ This repository contains scripts for dietary polyphenol estimation and inflammat
 
 ## Required Files
 
-Data Availablity: Food composition database data that is already publicly available is provided on this GitHub repository. Requests for non-metagenomic data from the USDA ARS WHNRC Nutritional Phenotyping Study used in this analysis should be made via an email to the senior WHNRC author on the publication of interest. Requests will be reviewed quarterly by a committee consisting of the study investigators. 
+**Data Availability**: Food composition database data that is already publicly available is provided on this GitHub repository. Requests for non-metagenomic data from the USDA ARS WHNRC Nutritional Phenotyping Study used in this analysis should be made via an email to the senior WHNRC author on the publication of interest. Requests will be reviewed quarterly by a committee consisting of the study investigators. 
 
--   **FNDDS 2017-2018 Data**, Downloadable as xlsx files fom the [USDA ARS Beltsville Food Surveys Research Group](https://www.ars.usda.gov/northeast-area/beltsville-md-bhnrc/beltsville-human-nutrition-research-center/food-surveys-research-group/docs/fndds-download-databases/). What We Eat in America (WWEIA) category code file was manually adjusted for food matrices on top of data derived from [here](https://www.ars.usda.gov/ARSUserFiles/80400530/pdf/1718/Food_categories_2017-2018.pdf).
+-   **FNDDS 2017-2018 Data**, Downloadable as xlsx files fom the [USDA ARS Beltsville Food Surveys Research Group](https://www.ars.usda.gov/northeast-area/beltsville-md-bhnrc/beltsville-human-nutrition-research-center/food-surveys-research-group/docs/fndds-download-databases/). 
 
     1)  '2017-2018 FNDDS At A Glance - Ingredient Nutrient Values.xlsx'
     2)  '2017-2018 FNDDS At A Glance - FNDDS Ingredients.xlsx'
     
--   **FooDB Data Sets**, Downloadable as FooDB CSV File from [foodb.ca/downloads](https://foodb.ca/downloads). FooDB Data Dictionary for related files is provided [here].(link)
+-   **FooDB Data Sets**, Downloadable as FooDB CSV File from [foodb.ca/downloads](https://foodb.ca/downloads). FooDB Data Dictionary for Content, Compound, and Food csv files is provided [here](https://github.com/SWi1/FooDB_polyphenol_analysis/blob/main/FooDB/README.md).
 
     1)  Content.csv (requires additional bzip2)
     2)  Compound.csv (requires additional bzip2)
@@ -48,13 +48,13 @@ Data Availablity: Food composition database data that is already publicly availa
 
 Scripts in each set are intended to be run sequentially.
 
-1)  Ingredientize. Adapted to R from Python Scripts created by Jules Larke. This script takes ASA24 Recall Data and iteratively breaks down mixed foods into their underlying ingredients.
+1)  **Ingredientize**. Adapted to R from Python Scripts created by Jules Larke. This script takes ASA24 Recall Data and iteratively breaks down mixed foods into their underlying ingredients.
     -   01_ingredientize_unmatchedfoods_asa24_fndds.Rmd.
     -   02_ingredientize_mixedfoods.Rmd
     -   03_ingredientize_code_remap.Rmd
     -   04_ingredientize_merge.Rmd
     
-2)  Mapping. FooDB to ASA Ingredient Descriptions - This script utilizes natural language processing to match ingredient descriptions in ASA24 data to their equivalent food description in FooDB.
+2)  **Mapping**. FooDB to ASA Ingredient Descriptions - This script utilizes natural language processing to match ingredient descriptions in ASA24 data to their equivalent food description in FooDB.
     -   01_FooDB_FooDBCleaning.ipynb
     -   02_FooDB_TextProcessing.ipynb
     -   03_FooDB_ManualMatch100.Rmd
@@ -65,7 +65,7 @@ Scripts in each set are intended to be run sequentially.
     -   07_FooDB_FNDDS_FullMatch_Part4.Rmd
     -   08_FooDB_FNDDS_FullMatch_Part5.Rmd
 
-3)  Estimation. This script extracts polyphenols from FooDB and links polyphenols to their content data in FooDB and retention factors from Phenol Explorer. The final script links polyphenol compound/content data to dietary recall data.
+3)  **Estimation**. This script extracts polyphenols from FooDB and links polyphenols to their content data in FooDB and retention factors from Phenol Explorer. The final script links polyphenol compound/content data to dietary recall data.
     -   E1_Polyphenol_Estimation_PhenolID.Rmd
     -   E1A_Polyphenol_Estimation_Milk_Scrape.Rmd
     -   E1B_Polyphenol_Estimation_Milk_Phenols.Rmd
