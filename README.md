@@ -48,13 +48,14 @@ This repository contains scripts for dietary polyphenol estimation and inflammat
 
 Scripts in each set are intended to be run sequentially.
 
-1)  **Ingredientize**. Adapted to R from Python Scripts created by Jules Larke. This script takes ASA24 Recall Data and iteratively breaks down mixed foods into their underlying ingredients.
+1)  **Ingredientize**. Adapted to R from Python Scripts created by Jules Larke. This script takes ASA24 Recall Data and iteratively breaks down mixed foods into their underlying ingredients by mapping to 2017-2018 FNDDS food data.
     -   01_ingredientize_unmatchedfoods_asa24_fndds.Rmd.
     -   02_ingredientize_mixedfoods.Rmd
     -   03_ingredientize_code_remap.Rmd
     -   04_ingredientize_merge.Rmd
     
-2)  **Mapping**. FooDB to ASA Ingredient Descriptions - This script utilizes natural language processing to match ingredient descriptions in ASA24 data to their equivalent food description in FooDB.
+2)  **Mapping**. FooDB to ASA Ingredient Descriptions - This script utilizes natural language processing to match ingredient descriptions in ASA24 data to their equivalent food description in FooDB. We recommend manual inspection for quality assurance throughout the mapping process and particularly for unexpected findings when using FooDB for estimation of polyphenol intake.
+
     -   01_FooDB_FooDBCleaning.ipynb
     -   02_FooDB_TextProcessing.ipynb
     -   03_FooDB_ManualMatch100.Rmd
