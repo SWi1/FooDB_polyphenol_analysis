@@ -1,10 +1,14 @@
 # READ ME
 
-Stephanie M.G. Wilson, December 2023
+Stephanie M.G. Wilson, October 2024
 
 ## Summary
 
-This repository contains scripts for dietary polyphenol estimation and inflammation outcome analyses from the USDA FL100 Phenotyping Study. Scripts are grouped into the following directories: Ingredientize, Mapping, Estimation, and Analyses. Estimates of dietary polyphenol intake are derived from mapping FooDB polyphenol content data to ingredientized dietary recall data.
+This repository contains scripts for dietary polyphenol estimation and inflammation analyses presented in the following study:
+
+-   **Wilson, S.M.G.**, Oliver, A., Larke, J.A., Naveja J.J., Alkan Z., Awika J.M., Stephensen C.B., Lemay D.G. (2024). Fine-scale Dietary Polyphenol Intake is Associated with Systemic and Gastrointestinal Inflammation in Healthy Adults. *The Journal of Nutrition*. [doi: 10.1016/j.tjnut.2024.08.010](https://doi.org/10.1016/j.tjnut.2024.08.010)
+
+Scripts are grouped into the following directories: Ingredientize, Mapping, Estimation, and Analyses. Estimates of dietary polyphenol intake are derived from mapping FooDB polyphenol content data to ingredientized dietary recall data.
 
 ## Required Software
 
@@ -80,6 +84,7 @@ Scripts in each set are intended to be run sequentially.
 4) Analyses. This directory includes scripts for the analysis of polyphenol intake and inflammation outcomes in healthy adults. Script list and additional information provided in README.md within Analysis directory.    
 
 ## Outputs
+**KEY FILE** denotes a primary file generated from dietary cleaning and mapping that is used in multiple downstream scripts.  
 
 1)  Ingredientize
 
