@@ -1,0 +1,168 @@
+---
+title: "PUBFIG_Total_Class_RegressionPlots"
+author: "Stephanie Wilson"
+date: "November 2023"
+output: html_document
+---
+
+# Create heatmap and regression plots for class analyses
+
+__Required Input Files__.                          
+  - *FL100_PP_Raw.csv* - Polyphenol content for each compound in foods listed in each recall test. Output from A0_FilePrep_Exploration.Rmd.
+  - *FooDB_phenols_taxonomy.csv* - Output from A0A_Scrape_Taxonomy.Rmd
+  - *FooDB_phenol_content_DailyClassAvg.csv* - Output from A4_Class_Analyses.Rmd, Average Intake for every compound from each Participant
+  - *FL100_merged_variables.csv* - Compilation of FL100 variables from A0_Merge_Variables.Rmd
+  - *All_ANCOVA_results.csv* - Output from A3_Class_Analyses.Rmd
+  
+__Outputs__
+  - Class Polyphenol Analysis Plots, food sources
+  
+```{r Load packages, message = FALSE}
+library(tidyverse); library(ggpubr); library(bestNormalize); library(smplot2)
+```
+
+
+```{r Load Data}
+# Polyphenol compound classification
+tax = read.csv('FooDB/FooDB_phenols_taxonomy.csv') %>%
+  select(c(compound_public_id, klass))
+
+#Define compound outliers
+removal_list = factor(c('Chinese tannin', 'alpha-Viniferin'))
+
+PP_Raw = read.csv('data/FL100_PP_Raw.csv') %>%
+  filter(!compound_name %in% removal_list) %>%
+  left_join(tax)
+
+#Intakes by class
+class = read.csv('FooDB/FooDB_phenol_content_DailyClassAvg.csv')
+
+#multiple files including ASA averages for kcal and fiber
+merged = read.csv('data/FL100_merged_variables.csv') %>%
+  mutate(Sex = factor(Sex))
+```
+
+### 1) Prepare Data
+
+Yeo-Johnson Transformation
+```{r}
+class$Prenol_yeo = bestNormalize(class$Prenol.lipids)$x.t
+class$Phenylprop_yeo = bestNormalize(class$Phenylpropanoic.acids)$x.t
+```
+
+Class Data Load and Clean
+```{r}
+ANCOVA = read.csv('output/All_ANCOVA_results.csv') %>%
+  filter(Outcome=='LBP' & Class %in% c('Prenol lipids', 'Phenylpropanoic acids')) %>%
+  filter(Variable %in% c('(Intercept)', 'Polyphenol Class Intake')) 
+
+#Isolate Intercepts
+Intercepts = ANCOVA %>%
+  filter(Variable == ('(Intercept)')) %>%
+  select(c(diet_control, Class, Coefficient)) %>%
+  rename('Intercept' =3 )
+
+ANCOVA_filter = ANCOVA %>%
+  filter(!Variable == ('(Intercept)')) %>%
+  left_join(Intercepts)
+```
+
+Isolate food sources of prenol lipids and phenylpropanoic acids to generate intake profiles
+```{r}
+consumers = PP_Raw %>%
+  # Filter in sunflower, olive, and nectarines
+  filter(food_id %in% c(86, 229, 121)) %>%
+  # Filter in phenylproponoic acids and prenol lipids
+  filter(klass %in% c("Phenylpropanoic acids", "Prenol lipids")) %>%
+  # SUM INTAKE FOR EACH POLYPHENOL CLASS BY FOOD, RECALL, USER
+  group_by(UserName, RecallNo, food_id, klass) %>%
+  mutate(SUM_class_intake = sum(pp_consumed, na.rm =TRUE)) %>%
+  distinct(UserName, RecallNo, food_id, klass, .keep_all = TRUE) %>%
+  ungroup() %>%
+  select(UserName, RecallNo, food_id, food_name, klass, SUM_class_intake) %>%
+  #Averages across recalls for each food, klass combo
+  group_by(UserName, food_id, klass) %>% 
+  mutate(AVG_class_intake = mean(SUM_class_intake, na.rm = TRUE)) %>%
+  distinct(UserName, food_id, klass, .keep_all = TRUE) %>%
+  ungroup() %>%
+  select(-c(RecallNo, SUM_class_intake))
+
+seed_nectarine_consumers = consumers %>%
+  filter(food_id %in% c(86, 229)) %>%
+  distinct(UserName) %>%
+  mutate(consumer = 'yes')
+```
+
+### 2) Class Intake Plot
+```{r}
+intake_plot = ggplot(consumers, aes(x = food_name, y = AVG_class_intake)) +
+  geom_boxplot(notch = TRUE)+
+  geom_jitter(position=position_jitter(0.2), alpha = 0.2) +
+  facet_wrap(~klass, scales = 'free_y') +
+  labs(x = "",
+       y = "Average Intake (g)",
+       fill = "Food") +
+  theme_classic() +
+  theme(legend.position = "none",
+        strip.background = element_rect(fill = "grey90"),
+         text = element_text(size = 12),
+        axis.text.x = element_text(angle = 45,vjust = 1, hjust = 1)) + 
+  scale_color_grey()
+```
+
+
+### 3) Class Regression Figure
+Filter in Prenol lipids and phenylpropanoic acids. Format to long format for plotting, clean up class names.
+```{r}
+sigclass = merged %>%
+  filter(!is.na(plasma_lbp_bd1))%>%
+  left_join(class, by = "UserName") %>%
+  select(c(UserName, avg_total_kcal, plasma_lbp_bd1, 
+           Prenol_yeo, Phenylprop_yeo)) %>%
+  pivot_longer(cols =4:5, names_to = 'class', values_to = 'value') %>% 
+  mutate(class = case_when(
+   class == 'Prenol_yeo' ~ 'Prenol Lipids',
+    class == 'Phenylprop_yeo' ~ 'Phenylpropanoic Acids')) %>%
+  left_join(seed_nectarine_consumers, by = "UserName")
+```
+
+```{r}
+# Feature the consumers of seeds and nectarines
+consumer_points = sigclass %>%
+  filter(consumer == "yes")
+
+#Class plots
+class_plots = ggscatter(sigclass_update, x = "value", y = "plasma_lbp_bd1", 
+                        add = "reg.line") +
+  facet_wrap(~str_wrap(class, width =25), scales = 'free_x', ncol=2) +
+  geom_smooth(method = "lm", se = FALSE) +
+  coord_cartesian(ylim = c(min(sigclass$plasma_lbp_bd1),
+                           max(sigclass$plasma_lbp_bd1)*1.2)) +
+   stat_cor(method = 'spearman', p.accuracy = 0.001, size =3,
+           label.x.npc = 'left',
+           label.y = max(sigclass$plasma_lbp_bd1)*1.1) +
+  geom_point(data = consumer_points, 
+             aes(x = value, y = plasma_lbp_bd1),
+                 colour = "#E54E21") +
+  labs(y = expression("LBP (µg/mL)"), 
+       x = 'Intake (mg/d, Yeo-Johnson transformed)',
+       colour = '') + 
+  scale_colour_discrete(name = '', 
+                      labels = "Consumed sunflower\nseeds, nectarines") +
+  theme_classic() +
+  theme(plot.margin = unit(c(0,0,0,0.5), "cm"),
+        legend.position = "right", 
+        strip.background = element_rect(fill = "grey90"),
+        text = element_text(size = 12)) 
+```
+
+
+### 3) Produce Publication Plots
+```{r}
+ggsave(intake_plot, filename = 'images/Class_Food_Sources.pdf', height = 3, width = 4, units = 'in')
+ggsave(intake_plot, filename = 'images/Class_Food_Sources.jpg', height = 3, width = 4, units = 'in', dpi = 300) 
+
+ggsave(class_plots, filename = 'images/Class_Regression_Plots.pdf', height = 3, width = 5, units = 'in')
+ggsave(class_plots, filename = 'images/Class_Regression_plots.jpg', height = 3, width = 5, units = 'in', dpi = 300) 
+```
+

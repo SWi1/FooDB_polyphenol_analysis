@@ -1,0 +1,94 @@
+---
+title: "A4B_PUBFIG_Total_Plot"
+author: "Stephanie Wilson"
+date: "May 2024"
+output: html_document
+---
+
+
+# Create heatmap and regression plots for total and class analyses
+
+__Required Input Files__.                          
+  - *FL100_PP_Raw.csv* - Polyphenol content for each compound in foods listed in each recall test. Output from A0_FilePrep_Exploration.Rmd.
+  - *FL100_merged_variables.csv* - Compilation of FL100 variables from A0_Merge_Variables.Rmd
+  - *All_ANCOVA_results.csv* - Output from A3_Class_Analyses.Rmd
+  - *Heatmap RDS files* - Output from A3_Total_Analyses_Inflammation.Rmd, A4A_PUBFIG_Class_Heatmap.Rmd
+  
+  
+__Outputs__
+  - Total Polyphenol Analysis Plots
+  
+```{r Load packages, message = FALSE}
+library(tidyverse); library(ggpubr); library(bestNormalize); library(smplot2)
+```
+
+
+```{r Load Data}
+#Define compound outliers
+removal_list = factor(c('Chinese tannin', 'alpha-Viniferin'))
+
+PP_Raw = read.csv('data/FL100_PP_Raw.csv') %>%
+  filter(!compound_name %in% removal_list) %>%
+  mutate(RecallNo = factor(RecallNo))
+
+#multiple files including ASA averages for kcal and fiber
+merged = read.csv('data/FL100_merged_variables.csv') %>%
+  mutate(Sex = factor(Sex))
+
+# Heatmap
+heatmap_total = readRDS('images/Heatmap_TotalPP.rds')
+```
+
+
+
+### 1) Total Intake Figure
+
+Sum polyphenol intake (mg) consumed for each recall, for each person, then averaged across recalls.
+ - No compound or food clarity.
+```{r}
+total_daily_intake = PP_Raw %>%
+  group_by(UserName, RecallNo) %>%
+  mutate(total_daily_intake_mg = sum(pp_consumed, na.rm = TRUE)) %>%
+  select(c(UserName, RecallNo, total_daily_intake_mg)) %>%
+  ungroup() %>%
+  group_by(UserName) %>%
+  mutate(Avg_Total_Daily_PP_Intake_mg = mean(total_daily_intake_mg)) %>%
+  distinct(UserName, .keep_all = TRUE) %>%
+  select(-c(RecallNo, total_daily_intake_mg)) %>%
+  left_join(merged, by = 'UserName') %>%
+  arrange(UserName) %>%
+  relocate(Sex, After24h, .after = UserName) %>%
+  mutate(energy_adj_Avg_Total_Daily_PP = Avg_Total_Daily_PP_Intake_mg/
+           (avg_total_kcal/1000)) 
+```
+
+
+```{r}
+calprotectin = total_daily_intake %>%
+  filter(!is.na(fecal_calprotectin))
+
+#Plot
+total_plot = ggscatter(calprotectin, x = "energy_adj_Avg_Total_Daily_PP", y = "fecal_calprotectin") +
+ coord_cartesian(ylim = c(min(calprotectin$fecal_calprotectin), max(calprotectin$fecal_calprotectin)))+ 
+  geom_abline(intercept = 55.1396088, slope = -0.0039462, color = "black", size = 1.2)+
+  annotate("text", x =8000, y = max(calprotectin$fecal_calprotectin)*0.8,
+           label = bquote(atop(beta == .(-0.004), p == 0.036)), 
+           vjust = 1.5, hjust = 1) +
+  
+  labs(y = 'CAL (ng/mL)', x = 'Total Polyphenol Intake\n(mg/1000 kcal)') + 
+    theme(plot.margin = unit(c(0,0.5,0.5,0.5), "cm"),
+          axis.text.x = element_text(angle = 45,vjust = 1, hjust = 1)) 
+total_plot
+```
+
+
+
+Merge with Heatmap
+```{r}
+combined_total = ggarrange(heatmap_total, total_plot, ncol = 2, widths = c(2.3,1), labels = c("A)", "B)"), align = 'v')
+ combined_total
+ 
+#For publications
+ggsave(combined_total, filename = 'images/Heatmap_TotalPP_2panel.pdf', height = 3, width = 8, units = 'in')
+ggsave(combined_total, filename = 'images/Heatmap_TotalPP_2panel.jpg', height = 3, width = 8, units = 'in') 
+```
