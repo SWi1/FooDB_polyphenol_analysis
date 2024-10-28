@@ -52,12 +52,13 @@ Scripts in each set are intended to be run sequentially.
 **Polyphenol Class + Inflammation Analysis**  
 8) A4_Class Analysis.Rmd  
 9) A4A_PUBFIG_Class_Heatmap.Rmd  
-10) A4B_PUBFIG_Total_Class_Plots.Rmd  
+10) A4B_PUBFIG_Class_Plots.Rmd  
+11) A4B_PUBFIG_Class_Plots.Rmd  
 
 **Polyphenol Compound + Inflammation Analysis**   
-11) ML3_dietML_Polyphenol_Food_Intakes.Rmd  
-12) ML3A_dietML_Feature_Formatting.Rmd  
-13) ML3B_dietML_RDSpaths_Performance.Rmd  
-14) ML3C_PUBFIG_Beeswarm.Rmd  
-15) ML3D_PUBFIG_Polyphenol_Features_Food_Sources.Rmd  
-16) ML3E_PUBFIG_Regression_Plots.Rmd  
+12) ML3_dietML_Polyphenol_Food_Intakes.Rmd  
+13) ML3A_dietML_Feature_Formatting.Rmd  
+14) ML3B_dietML_RDSpaths_Performance.Rmd  
+15) ML3C_PUBFIG_Beeswarm.Rmd  
+16) ML3D_PUBFIG_Polyphenol_Features_Food_Sources.Rmd  
+17) ML3E_PUBFIG_Regression_Plots.Rmd  
